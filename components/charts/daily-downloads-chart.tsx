@@ -58,7 +58,7 @@ export function DailyDownloadsChart() {
   const formattedData = React.useMemo(() => {
     return data.map(item => ({
       date: item.date,
-      downloads: item.total_downloads,
+      downloads: item.downloads,
     }));
   }, [data]);
 

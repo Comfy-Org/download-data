@@ -4,9 +4,9 @@ import path from 'path';
 import fs from 'fs';
 
 // Define the structure of the daily summary data
-interface DailyDownload {
+export interface DailyDownload {
   date: string; // YYYY-MM-DD
-  total_downloads: number;
+  downloads: number;
 }
 
 export async function GET() {
@@ -33,7 +33,17 @@ export async function GET() {
       FROM daily_summary
       ORDER BY date ASC
     `);
-    const data: DailyDownload[] = stmt.all() as DailyDownload[];
+    // Fetch raw cumulative totals
+    const rows = stmt.all() as { date: string; total_downloads: number }[];
+
+    // Compute daily new downloads (delta)
+    const data: DailyDownload[] = rows.map((row, idx) => ({
+      date: row.date,
+      downloads:
+        idx === 0
+          ? row.total_downloads
+          : row.total_downloads - rows[idx - 1].total_downloads,
+    }));
 
     return NextResponse.json(data);
   } catch (error) {
@@ -45,11 +55,11 @@ export async function GET() {
   } finally {
     // Ensure the database connection is closed
     if (db) {
-      db.close((err) => {
-        if (err) {
-          console.error('Error closing database:', err.message);
-        }
-      });
+      try {
+        db.close();
+      } catch (err: unknown) {
+        console.error('Error closing database:', (err as Error).message);
+      }
     }
   }
 } 

@@ -101,7 +101,7 @@ function storeReleaseData(releases) {
   // Use a transaction for efficiency and atomicity
   db.transaction((releasesData) => {
     for (const release of releasesData) {
-      if (!release.draft && !release.prerelease) { // Only store published, non-prerelease releases
+      if (!release.draft) { // Only store published, non-prerelease releases
         console.log(`Processing release: ${release.tag_name}`);
         insertRelease.run({
           id: release.id,

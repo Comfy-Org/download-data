@@ -67,6 +67,11 @@ export function DailyDownloadsChart() {
     return formattedData.reduce((acc, curr) => acc + curr.downloads, 0);
   }, [formattedData]);
 
+  // Exclude the first day's delta as it's not meaningful
+  const chartData = React.useMemo(() => {
+    return formattedData.slice(1);
+  }, [formattedData]);
+
   return (
     <Card>
       <CardHeader>
@@ -80,11 +85,14 @@ export function DailyDownloadsChart() {
         {loading && <p>Loading chart data...</p>}
         {error && <p className="text-destructive">Error loading data: {error}</p>}
         {!loading && !error && data.length === 0 && <p>No download data available.</p>}
-        {!loading && !error && data.length > 0 && (
+        {!loading && !error && data.length > 0 && chartData.length === 0 && (
+          <p>Not enough data to display download deltas.</p>
+        )}
+        {!loading && !error && chartData.length > 0 && (
           <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
             <AreaChart
               accessibilityLayer
-              data={formattedData}
+              data={chartData}
               margin={{
                 left: 12,
                 right: 12,

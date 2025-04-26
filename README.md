@@ -97,9 +97,8 @@ Contributions, bug reports, and feature requests are welcome! Please open an iss
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [GPL-3.0 license](LICENSE).
 
 ## Acknowledgments
 
 - Built with Next.js, React, Tailwind CSS, and Better-SQLite3.
-- Inspired by the ComfyUI community and download trends tracking needs.

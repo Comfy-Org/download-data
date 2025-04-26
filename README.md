@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ComfyUI Download Stats Dashboard
+
+A simple dashboard to track, log, and visualize daily download counts for the portable version of **ComfyUI**.
+
+## Overview
+
+This project fetches release and asset download data from the ComfyUI GitHub repository, stores it in a local SQLite database, aggregates daily download totals, and presents interactive charts through a Next.js dashboard.
+
+## Features
+
+- **Automated Data Fetching**: Retrieve GitHub release and asset download counts via a Node.js script.
+- **Local Persistence**: Store raw data in SQLite (`data/downloads.db`) and maintain a `daily_summary` table for easy trend analysis.
+- **Interactive Dashboard**: Visualize download metrics with a responsive React interface using Recharts.
+- **Scheduled Updates**: Leverage GitHub Actions to run the fetch script daily at 07:00 UTC and commit updates.
+- **No External Dependencies**: Everything runs locally without requiring external database services.
+
+## Tech Stack
+
+- **Next.js 15** (App Router) + **React** + **TypeScript**
+- **Tailwind CSS** for styling
+- **Recharts** for data visualization
+- **Better-SQLite3** for database interactions
+- **GitHub Actions** for scheduled data updates
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js v18 or newer (tested with v20)
+- npm, yarn, or pnpm as package manager
+
+### Installation
+
+```bash
+git clone https://github.com/comfyanonymous/comfy-download-data.git
+cd comfy-download-data
+npm install
+# or yarn install
+# or pnpm install
+```
+
+### Configuration (Optional)
+
+To avoid GitHub API rate limits, you can provide a Personal Access Token:
+
+```bash
+export GITHUB_TOKEN=your_personal_access_token
+```
+
+The fetch script will automatically use `GITHUB_TOKEN` if present.
+
+### Fetching Data
+
+Run the data fetching script to create or update the SQLite database:
+
+```bash
+npm run getdata
+# or node scripts/fetch-stats.mjs
+```
+
+This populates `data/downloads.db` and updates daily summaries.
+
+### Running the Dashboard
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# or yarn dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Building for Production
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm run start
+```
 
-## Learn More
+## Database Schema
 
-To learn more about Next.js, take a look at the following resources:
+- **releases**: Stores GitHub release metadata (`id`, `tag_name`, `name`, `published_at`, `draft`, `prerelease`).
+- **assets**: Records individual asset download counts (`id`, `release_id`, `name`, `download_count`).
+- **daily_summary**: Aggregated total downloads per date with `downloads_delta` from the previous day.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## GitHub Actions Workflow
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+A workflow in `.github/workflows/fetch-data.yml` is configured to:
 
-## Deploy on Vercel
+1. Run the fetch script daily at 07:00 UTC.
+2. Commit changes to `data/downloads.db` if new data is fetched.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Contributing
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Contributions, bug reports, and feature requests are welcome! Please open an issue or submit a pull request.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+## Acknowledgments
+
+- Built with Next.js, React, Tailwind CSS, and Better-SQLite3.
+- Inspired by the ComfyUI community and download trends tracking needs.

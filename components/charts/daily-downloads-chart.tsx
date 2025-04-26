@@ -77,7 +77,7 @@ export function DailyDownloadsChart() {
       <CardHeader>
         <CardTitle>Daily New Downloads</CardTitle>
         <CardDescription>
-          New downloads per day for ComfyUI releases.
+          New downloads per day for portable ComfyUI releases.
           {totalDownloads > 0 && ` Cumulative total: ${totalDownloads.toLocaleString()}`}
         </CardDescription>
       </CardHeader>

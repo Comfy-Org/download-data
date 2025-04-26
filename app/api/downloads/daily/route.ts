@@ -27,22 +27,19 @@ export async function GET() {
     // Connect to the SQLite database (read-only)
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
 
-    // Prepare and run the query to get all daily summaries, ordered by date
+    // Prepare and run the query to get daily deltas, ordered by date
     const stmt = db.prepare(`
-      SELECT date, total_downloads
+      SELECT date, downloads_delta
       FROM daily_summary
       ORDER BY date ASC
     `);
-    // Fetch raw cumulative totals
-    const rows = stmt.all() as { date: string; total_downloads: number }[];
+    // Fetch deltas directly
+    const rows = stmt.all() as { date: string; downloads_delta: number }[];
 
-    // Compute daily new downloads (delta)
-    const data: DailyDownload[] = rows.map((row, idx) => ({
+    // Map rows to API response format
+    const data: DailyDownload[] = rows.map(row => ({
       date: row.date,
-      downloads:
-        idx === 0
-          ? row.total_downloads
-          : row.total_downloads - rows[idx - 1].total_downloads,
+      downloads: row.downloads_delta,
     }));
 
     return NextResponse.json(data);

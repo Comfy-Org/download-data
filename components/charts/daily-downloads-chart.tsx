@@ -18,7 +18,7 @@ import { type DailyDownload } from '@/app/api/downloads/daily/route'; // Adjust 
 
 const chartConfig = {
   downloads: {
-    label: 'Downloads',
+    label: 'New Downloads',
     color: 'hsl(var(--chart-1))',
   },
 } satisfies ChartConfig;
@@ -70,10 +70,10 @@ export function DailyDownloadsChart() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Daily Downloads</CardTitle>
+        <CardTitle>Daily New Downloads</CardTitle>
         <CardDescription>
-          Total downloads per day for ComfyUI releases.
-          {totalDownloads > 0 && ` Total: ${totalDownloads.toLocaleString()}`}
+          New downloads per day for ComfyUI releases.
+          {totalDownloads > 0 && ` Cumulative total: ${totalDownloads.toLocaleString()}`}
         </CardDescription>
       </CardHeader>
       <CardContent>

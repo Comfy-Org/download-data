@@ -47,9 +47,16 @@ function setupDatabase() {
     CREATE TABLE IF NOT EXISTS daily_summary (
       date TEXT PRIMARY KEY,           -- Date in 'YYYY-MM-DD' format
       total_downloads INTEGER NOT NULL,
+      downloads_delta INTEGER NOT NULL DEFAULT 0, -- Delta in downloads from yesterday
       fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) -- When this summary was calculated
     );
   `);
+
+  // Ensure downloads_delta column exists for older databases
+  const tableInfo = db.prepare("PRAGMA table_info(daily_summary)").all();
+  if (!tableInfo.some(col => col.name === 'downloads_delta')) {
+    db.exec("ALTER TABLE daily_summary ADD COLUMN downloads_delta INTEGER NOT NULL DEFAULT 0");
+  }
 
   console.log('Database tables ensured.');
 }
@@ -136,22 +143,29 @@ function updateDailySummary() {
 
     // Get today's date in YYYY-MM-DD format
     const today = new Date().toISOString().split('T')[0];
+    // Get yesterday's date in YYYY-MM-DD format
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    // Fetch yesterday's total downloads
+    const prevRow = db.prepare('SELECT total_downloads FROM daily_summary WHERE date = ?').get(yesterday);
+    const downloads_delta = (total_downloads || 0) - (prevRow ? prevRow.total_downloads : 0);
 
     // Insert or update the summary for today
     const upsertSummary = db.prepare(`
-        INSERT INTO daily_summary (date, total_downloads)
-        VALUES (@date, @total_downloads)
+        INSERT INTO daily_summary (date, total_downloads, downloads_delta)
+        VALUES (@date, @total_downloads, @downloads_delta)
         ON CONFLICT(date) DO UPDATE SET
             total_downloads = excluded.total_downloads,
+            downloads_delta = excluded.downloads_delta,
             fetch_timestamp = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
     `);
 
     upsertSummary.run({
         date: today,
-        total_downloads: total_downloads || 0 // Use 0 if sum is null (no assets yet)
+        total_downloads: total_downloads || 0, // Use 0 if sum is null
+        downloads_delta: downloads_delta
     });
 
-    console.log(`Daily summary updated for ${today} with total downloads: ${total_downloads || 0}`);
+    console.log(`Daily summary updated for ${today} with total downloads: ${total_downloads || 0} (delta: ${downloads_delta})`);
 }
 
 

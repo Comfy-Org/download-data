@@ -14,10 +14,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@latest
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@latest
+        uses: actions/setup-node@v4
         with:
           node-version: 'latest' # Use a specific LTS version or read from .nvmrc
           cache: 'npm'

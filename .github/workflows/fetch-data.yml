@@ -1,0 +1,48 @@
+name: Fetch Download Data
+
+on:
+  workflow_dispatch: # Allows manual triggering
+  schedule:
+    - cron: '0 5 * * *' # Runs daily at 5:00 AM UTC
+
+jobs:
+  fetch_and_commit:
+    runs-on: ubuntu-latest
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Use a specific LTS version or read from .nvmrc
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci # Use ci for faster, more reliable installs in CI
+
+      - name: Fetch data and update database
+        run: node scripts/fetch-stats.mjs
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Action Bot"
+          git config user.email "actions@github.com"
+
+      - name: Check for changes
+        id: git_status
+        run: echo "changed=$(git status --porcelain data/downloads.db)" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        if: steps.git_status.outputs.changed
+        run: |
+          git add data/downloads.db
+          git commit -m "chore: update download data [skip ci]"
+          git push
+      - name: No changes detected
+        if: ${{ !steps.git_status.outputs.changed }}
+        run: echo "No changes to commit in download data."

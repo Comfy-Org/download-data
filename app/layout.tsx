@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ComfyUI Downloads",
+  title: "ComfyUI Download Data",
   description: "Portable ComfyUI downloads, tracked daily.",
 };
 

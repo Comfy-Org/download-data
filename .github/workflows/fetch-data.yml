@@ -14,19 +14,19 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@latest
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@latest
         with:
-          node-version: '20' # Use a specific LTS version or read from .nvmrc
+          node-version: 'latest' # Use a specific LTS version or read from .nvmrc
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci # Use ci for faster, more reliable installs in CI
 
       - name: Fetch data and update database
-        run: node scripts/fetch-stats.mjs
+        run: npm run getdata
 
       - name: Configure Git
         run: |

@@ -25,6 +25,8 @@ function setupDatabase() {
       tag_name TEXT UNIQUE NOT NULL,   -- e.g., "v1.0.0"
       name TEXT,                       -- Release title
       published_at TEXT,               -- ISO 8601 timestamp
+      draft INTEGER NOT NULL DEFAULT 0, -- Whether this is a draft release
+      prerelease INTEGER NOT NULL DEFAULT 0, -- Whether this is a prerelease
       fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) -- When this record was fetched/updated
     );
   `);
@@ -96,8 +98,8 @@ function storeReleaseData(releases) {
   }
 
   const insertRelease = db.prepare(`
-    INSERT OR REPLACE INTO releases (id, tag_name, name, published_at)
-    VALUES (@id, @tag_name, @name, @published_at);
+    INSERT OR REPLACE INTO releases (id, tag_name, name, published_at, draft, prerelease)
+    VALUES (@id, @tag_name, @name, @published_at, @draft, @prerelease);
   `);
 
   const insertAsset = db.prepare(`
@@ -108,25 +110,23 @@ function storeReleaseData(releases) {
   // Use a transaction for efficiency and atomicity
   db.transaction((releasesData) => {
     for (const release of releasesData) {
-      if (!release.draft) { // Only store non-draft releases (including prereleases)
-        console.log(`Processing release: ${release.tag_name}`);
-        insertRelease.run({
-          id: release.id,
-          tag_name: release.tag_name,
-          name: release.name,
-          published_at: release.published_at,
-        });
+      console.log(`Processing release: ${release.tag_name}`);
+      insertRelease.run({
+        id: release.id,
+        tag_name: release.tag_name,
+        name: release.name,
+        published_at: release.published_at,
+        draft: release.draft ? 1 : 0,
+        prerelease: release.prerelease ? 1 : 0,
+      });
 
-        for (const asset of release.assets) {
-          insertAsset.run({
-            id: asset.id,
-            release_id: release.id,
-            name: asset.name,
-            download_count: asset.download_count,
-          });
-        }
-      } else {
-         console.log(`Skipping draft: ${release.tag_name}`);
+      for (const asset of release.assets) {
+        insertAsset.run({
+          id: asset.id,
+          release_id: release.id,
+          name: asset.name,
+          download_count: asset.download_count,
+        });
       }
     }
   })(releases); // Execute the transaction

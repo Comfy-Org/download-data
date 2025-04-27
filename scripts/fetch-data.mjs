@@ -34,6 +34,14 @@ function setupDatabase() {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_summary (
+      date TEXT PRIMARY KEY,
+      downloads_total INTEGER NOT NULL,
+      downloads_delta INTEGER NOT NULL,
+      fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+  `);
   console.log('Database tables ensured.');
 }
 
@@ -92,12 +100,32 @@ function storeDailyStats(releases) {
   console.log('Daily stats stored.');
 }
 
+// Add new function to calculate and store daily summary
+function storeDailySummary() {
+  console.log('Storing daily summary...');
+  const today = new Date().toISOString().split('T')[0];
+  const yesterdayDate = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  const totalToday = db.prepare(
+    'SELECT COALESCE(SUM(download_count), 0) AS total FROM asset_daily_stats WHERE date = ?'
+  ).get(today).total;
+  const totalYesterday = db.prepare(
+    'SELECT COALESCE(SUM(download_count), 0) AS total FROM asset_daily_stats WHERE date = ?'
+  ).get(yesterdayDate).total;
+  const delta = totalToday - totalYesterday;
+  const insertSummary = db.prepare(
+    `INSERT OR REPLACE INTO daily_summary (date, downloads_total, downloads_delta) VALUES (?, ?, ?);`
+  );
+  insertSummary.run(today, totalToday, delta);
+  console.log(`Daily summary stored for ${today}: total=${totalToday}, delta=${delta}`);
+}
+
 // --- Main Execution ---
 async function main() {
   try {
     setupDatabase();
     const releases = await fetchGitHubReleases();
     storeDailyStats(releases);
+    storeDailySummary();
   } catch (error) {
     console.error('An error occurred during the fetch process:', error);
   } finally {

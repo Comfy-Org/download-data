@@ -5,8 +5,10 @@ import fs from 'fs';
 
 // Define the structure of the daily summary data
 export interface DailyDownload {
-  date: string; // YYYY-MM-DD
-  downloads: number;
+  date: string;           // YYYY-MM-DD
+  downloadsTotal: number; // cumulative total downloads
+  downloadsDelta: number; // net new downloads for the day
+  fetchTimestamp: string; // ISO timestamp when this summary was recorded
 }
 
 export async function GET() {
@@ -27,19 +29,21 @@ export async function GET() {
     // Connect to the SQLite database (read-only)
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
 
-    // Prepare and run the query to get daily deltas, ordered by date
+    // Prepare and run the query to get daily summary, ordered by date
     const stmt = db.prepare(`
-      SELECT date, downloads_delta
+      SELECT date, downloads_total, downloads_delta, fetch_timestamp
       FROM daily_summary
       ORDER BY date ASC
     `);
-    // Fetch deltas directly
-    const rows = stmt.all() as { date: string; downloads_delta: number }[];
+    // Fetch all summary rows
+    const rows = stmt.all() as { date: string; downloads_total: number; downloads_delta: number; fetch_timestamp: string }[];
 
     // Map rows to API response format
     const data: DailyDownload[] = rows.map(row => ({
       date: row.date,
-      downloads: row.downloads_delta,
+      downloadsTotal: row.downloads_total,
+      downloadsDelta: row.downloads_delta,
+      fetchTimestamp: row.fetch_timestamp,
     }));
 
     return NextResponse.json(data);
@@ -59,4 +63,4 @@ export async function GET() {
       }
     }
   }
-} 
+}

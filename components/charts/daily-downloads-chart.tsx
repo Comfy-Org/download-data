@@ -18,7 +18,7 @@ import { type DailyDownload } from '@/app/api/downloads/daily/route'; // Adjust 
 
 const chartConfig = {
   downloads: {
-    label: 'New Downloads',
+    label: 'Daily New Downloads',
     color: 'hsl(var(--chart-1))',
   },
 } satisfies ChartConfig;
@@ -58,28 +58,20 @@ export function DailyDownloadsChart() {
   const formattedData = React.useMemo(() => {
     return data.map(item => ({
       date: item.date,
-      downloads: item.downloads,
+      // use new schema field for daily delta
+      downloads: item.downloadsDelta,
     }));
   }, [data]);
 
-  // Calculate total downloads
-  const totalDownloads = React.useMemo(() => {
-    return formattedData.reduce((acc, curr) => acc + curr.downloads, 0);
-  }, [formattedData]);
-
-  // Exclude the first day's delta as it's not meaningful
-  const chartData = React.useMemo(() => {
-    return formattedData.slice(1);
-  }, [formattedData]);
+  // Chart data uses all daily deltas
+  const chartData = formattedData;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Total New Downloads</CardTitle>
+        <CardTitle>Daily New Downloads</CardTitle>
         <CardDescription>
-          New downloads per day for all portable ComfyUI releases.
-          <br />
-          {totalDownloads > 0 && ` Cumulative total: ${totalDownloads.toLocaleString()}`}
+          Net new downloads per day for all portable ComfyUI releases.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -133,4 +125,4 @@ export function DailyDownloadsChart() {
       </CardContent>
     </Card>
   );
-} 
+}

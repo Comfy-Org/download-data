@@ -1,4 +1,4 @@
-# ComfyUI Download Stats Dashboard
+# ComfyUI Download Data
 
 A simple dashboard to track, log, and visualize daily download counts for the portable version of **ComfyUI**.
 
@@ -92,6 +92,26 @@ CREATE TABLE IF NOT EXISTS asset_daily_stats (
   prerelease INTEGER NOT NULL,
   fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   PRIMARY KEY (asset_id, date)
+);
+```
+
+### daily_summary
+
+The `daily_summary` table summarizes daily total and delta of downloads.
+
+Column | Type | Description
+--- | --- | ---
+date | TEXT | Date in `YYYY-MM-DD` format.
+downloads_total | INTEGER | Total downloads for all assets on that date.
+downloads_delta | INTEGER | Difference in downloads compared to the previous day.
+fetch_timestamp | TEXT | ISO 8601 timestamp when the summary was fetched (default to current time).
+
+```sql
+CREATE TABLE IF NOT EXISTS daily_summary (
+  date TEXT PRIMARY KEY,
+  downloads_total INTEGER NOT NULL,
+  downloads_delta INTEGER NOT NULL,
+  fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 ```
 

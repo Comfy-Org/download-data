@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center min-h-screen p-8 sm:p-16">
       <header className="w-full max-w-4xl mb-8">
-        <h1 className="text-3xl font-bold text-center">ComfyUI Download Stats</h1>
+        <h1 className="text-3xl font-bold text-center">ComfyUI Download Data</h1>
       </header>
       <main className="w-full max-w-4xl">
         <DailyDownloadsChart />

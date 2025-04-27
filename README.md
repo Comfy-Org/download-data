@@ -70,15 +70,36 @@ npm run start
 
 ## Database Schema
 
-- **releases**: Stores GitHub release metadata (`id`, `tag_name`, `name`, `published_at`, `draft`, `prerelease`).
-- **assets**: Records individual asset download counts (`id`, `release_id`, `name`, `download_count`).
-- **daily_summary**: Aggregated total downloads per date with `downloads_delta` from the previous day.
+### asset_daily_stats
+
+The `asset_daily_stats` table tracks daily download counts for each GitHub asset, including flags for draft and prerelease status.
+
+Column | Type | Description
+--- | --- | ---
+asset_id | INTEGER | The GitHub asset ID.
+date | TEXT | Date in `YYYY-MM-DD` format.
+download_count | INTEGER | Number of downloads for the asset on that date.
+draft | INTEGER | 1 if the release is a draft, 0 otherwise.
+prerelease | INTEGER | 1 if the release is a prerelease, 0 otherwise.
+fetch_timestamp | TEXT | ISO 8601 timestamp when the data was fetched (default to current time).
+
+```sql
+CREATE TABLE IF NOT EXISTS asset_daily_stats (
+  asset_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  download_count INTEGER NOT NULL,
+  draft INTEGER NOT NULL,
+  prerelease INTEGER NOT NULL,
+  fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (asset_id, date)
+);
+```
 
 ## GitHub Actions Workflow
 
 A workflow in `.github/workflows/fetch-data.yml` is configured to:
 
-1. Run the fetch script daily at 07:00 UTC.
+1. Run the fetch script daily at 10:49 UTC.
 2. Commit changes to `data/downloads.db` if new data is fetched.
 
 ## Contributing

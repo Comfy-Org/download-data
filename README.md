@@ -26,7 +26,7 @@ This project fetches release and asset download data from the ComfyUI GitHub rep
 
 ### Prerequisites
 
-- Node.js v18 or newer (tested with v20)
+- Node.js v22 or newer (tested with v22)
 - npm, yarn, or pnpm as package manager
 
 ### Installation

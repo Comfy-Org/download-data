@@ -3,7 +3,7 @@ name: Fetch Download Data
 on:
   workflow_dispatch: # Allows manual triggering
   schedule:
-    - cron: '49 10 * * *' # Runs daily at midnight PDT (7:00 AM UTC)
+    - cron: '49 10 * * *' # Runs daily at midnight PDT (10:49 AM UTC)
 
 jobs:
   fetch_and_commit:

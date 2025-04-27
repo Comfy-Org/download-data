@@ -11,7 +11,7 @@ export default function Home() {
         {/* You can add more charts or data displays here */}
       </main>
       <footer className="mt-12 text-center text-muted-foreground">
-        Data fetched from GitHub Releases API.
+        <a href="https://github.com/benceruleanlu/comfyui-download-data" className="text-blue-500 hover:underline" target="_blank">Data fetched daily from GitHub Releases API.</a>
       </footer>
     </div>
   );

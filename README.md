@@ -39,23 +39,13 @@ npm install
 # or pnpm install
 ```
 
-### Configuration (Optional)
-
-To avoid GitHub API rate limits, you can provide a Personal Access Token:
-
-```bash
-export GITHUB_TOKEN=your_personal_access_token
-```
-
-The fetch script will automatically use `GITHUB_TOKEN` if present.
-
 ### Fetching Data
 
 Run the data fetching script to create or update the SQLite database:
 
 ```bash
 npm run getdata
-# or node scripts/fetch-stats.mjs
+# or node scripts/fetch-data.mjs
 ```
 
 This populates `data/downloads.db` and updates daily summaries.

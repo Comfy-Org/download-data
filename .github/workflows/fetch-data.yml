@@ -3,7 +3,7 @@ name: Fetch Download Data
 on:
   workflow_dispatch: # Allows manual triggering
   schedule:
-    - cron: '0 7 * * *' # Runs daily at midnight PDT (7:00 AM UTC)
+    - cron: '49 10 * * *' # Runs daily at midnight PDT (7:00 AM UTC)
 
 jobs:
   fetch_and_commit:
@@ -12,6 +12,8 @@ jobs:
       # Give the default GITHUB_TOKEN write permission to commit and push the
       # added or changed files to the repository.
       contents: write
+    env:
+      PAT: ${{ secrets.PAT }} 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

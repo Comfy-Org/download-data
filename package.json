@@ -1,13 +1,13 @@
 {
   "name": "comfy-download-data",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "getdata": "node scripts/fetch-stats.mjs"
+    "getdata": "node scripts/fetch-data.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.9.1",

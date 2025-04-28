@@ -11,7 +11,7 @@ This project fetches release and asset download data from the ComfyUI GitHub rep
 - **Automated Data Fetching**: Retrieve GitHub release and asset download counts via a Node.js script.
 - **Local Persistence**: Store raw data in SQLite (`data/downloads.db`) and maintain a `daily_summary` table for easy trend analysis.
 - **Interactive Dashboard**: Visualize download metrics with a responsive React interface using Recharts.
-- **Scheduled Updates**: Leverage GitHub Actions to run the fetch script daily at 07:00 UTC and commit updates.
+- **Scheduled Updates**: Leverage GitHub Actions to run the fetch script daily at 10:49 UTC and commit updates.
 - **No External Dependencies**: Everything runs locally without requiring external database services.
 
 ## Tech Stack

@@ -77,6 +77,7 @@ The `asset_daily_stats` table tracks daily download counts for each GitHub asset
 Column | Type | Description
 --- | --- | ---
 asset_id | INTEGER | The GitHub asset ID.
+asset_name | TEXT | The name of the asset.
 date | TEXT | Date in `YYYY-MM-DD` format.
 download_count | INTEGER | Number of downloads for the asset on that date.
 draft | INTEGER | 1 if the release is a draft, 0 otherwise.
@@ -86,6 +87,7 @@ fetch_timestamp | TEXT | ISO 8601 timestamp when the data was fetched (default t
 ```sql
 CREATE TABLE IF NOT EXISTS asset_daily_stats (
   asset_id INTEGER NOT NULL,
+  asset_name TEXT NOT NULL,
   date TEXT NOT NULL,
   download_count INTEGER NOT NULL,
   draft INTEGER NOT NULL,

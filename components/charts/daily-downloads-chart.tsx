@@ -63,8 +63,8 @@ export function DailyDownloadsChart() {
     }));
   }, [data]);
 
-  // Chart data uses all daily deltas
-  const chartData = formattedData;
+  // Chart data uses all daily deltas except the first (which is always an outlier)
+  const chartData = formattedData.slice(1);
 
   return (
     <Card>

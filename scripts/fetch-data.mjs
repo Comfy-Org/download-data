@@ -26,6 +26,7 @@ function setupDatabase() {
     CREATE TABLE IF NOT EXISTS asset_daily_stats (
       asset_id INTEGER NOT NULL,
       asset_name TEXT NOT NULL,
+      tag_name TEXT NOT NULL,
       date TEXT NOT NULL,
       download_count INTEGER NOT NULL,
       draft INTEGER NOT NULL,
@@ -80,8 +81,8 @@ function storeDailyStats(releases) {
   const today = new Date().toISOString().split('T')[0];
   const insert = db.prepare(`
     INSERT OR REPLACE INTO asset_daily_stats
-    (asset_id, asset_name, date, download_count, draft, prerelease)
-    VALUES (@asset_id, @asset_name, @date, @download_count, @draft, @prerelease);
+    (asset_id, asset_name, tag_name, date, download_count, draft, prerelease)
+    VALUES (@asset_id, @asset_name, @tag_name, @date, @download_count, @draft, @prerelease);
   `);
   db.transaction((rows) => {
     for (const release of rows) {
@@ -91,6 +92,7 @@ function storeDailyStats(releases) {
         insert.run({
           asset_id: asset.id,
           asset_name: asset.name,
+          tag_name: release.tag_name,
           date: today,
           download_count: asset.download_count,
           draft: draftFlag,

@@ -39,7 +39,6 @@ function setupDatabase() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS daily_summary (
       date TEXT PRIMARY KEY,
-      downloads_total INTEGER NOT NULL,
       downloads_delta INTEGER NOT NULL,
       fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
@@ -109,9 +108,6 @@ function storeDailySummary() {
   console.log('Storing daily summary...');
   const today = new Date().toISOString().split('T')[0];
   const yesterdayDate = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-  const totalToday = db.prepare(
-    'SELECT COALESCE(SUM(download_count), 0) AS total FROM asset_daily_stats WHERE date = ?'
-  ).get(today).total;
   // Calculate delta per asset to avoid negative values when assets are missing
   const deltaRow = db.prepare(`
     SELECT
@@ -128,10 +124,10 @@ function storeDailySummary() {
   `).get(yesterdayDate, today);
   const delta = deltaRow.delta;
   const insertSummary = db.prepare(
-    `INSERT OR REPLACE INTO daily_summary (date, downloads_total, downloads_delta) VALUES (?, ?, ?);`
+    `INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`
   );
-  insertSummary.run(today, totalToday, delta);
-  console.log(`Daily summary stored for ${today}: total=${totalToday}, delta=${delta}`);
+  insertSummary.run(today, delta);
+  console.log(`Daily summary stored for ${today}: delta=${delta}`);
 }
 
 // --- Main Execution ---

@@ -6,6 +6,12 @@ export default function Home() {
       <header className="w-full max-w-4xl mb-8">
         <h1 className="text-3xl font-bold text-center">ComfyUI Download Data</h1>
       </header>
+      {/* TEMPORARY WARNING BANNER */}
+      <div className="w-full max-w-4xl mb-6">
+        <div className="bg-yellow-100 border border-yellow-300 text-yellow-900 rounded-lg px-4 py-3 text-center text-sm font-medium">
+          <strong>Notice:</strong> Upgrades are under construction. Please ignore the data for May 3rd, 2025.
+        </div>
+      </div>
       <main className="w-full max-w-4xl">
         <DailyDownloadsChart />
         {/* You can add more charts or data displays here */}

@@ -112,10 +112,21 @@ function storeDailySummary() {
   const totalToday = db.prepare(
     'SELECT COALESCE(SUM(download_count), 0) AS total FROM asset_daily_stats WHERE date = ?'
   ).get(today).total;
-  const totalYesterday = db.prepare(
-    'SELECT COALESCE(SUM(download_count), 0) AS total FROM asset_daily_stats WHERE date = ?'
-  ).get(yesterdayDate).total;
-  const delta = totalToday - totalYesterday;
+  // Calculate delta per asset to avoid negative values when assets are missing
+  const deltaRow = db.prepare(`
+    SELECT
+      COALESCE(SUM(
+        CASE
+          WHEN old.download_count IS NULL THEN new.download_count
+          ELSE new.download_count - old.download_count
+        END
+      ), 0) AS delta
+    FROM asset_daily_stats AS new
+    LEFT JOIN asset_daily_stats AS old
+      ON new.asset_id = old.asset_id AND old.date = ?
+    WHERE new.date = ?
+  `).get(yesterdayDate, today);
+  const delta = deltaRow.delta;
   const insertSummary = db.prepare(
     `INSERT OR REPLACE INTO daily_summary (date, downloads_total, downloads_delta) VALUES (?, ?, ?);`
   );

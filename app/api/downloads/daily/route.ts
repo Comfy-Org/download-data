@@ -6,7 +6,6 @@ import fs from 'fs';
 // Define the structure of the daily summary data
 export interface DailyDownload {
   date: string;           // YYYY-MM-DD
-  downloadsTotal: number; // cumulative total downloads
   downloadsDelta: number; // net new downloads for the day
   fetchTimestamp: string; // ISO timestamp when this summary was recorded
 }
@@ -31,17 +30,16 @@ export async function GET() {
 
     // Prepare and run the query to get daily summary, ordered by date
     const stmt = db.prepare(`
-      SELECT date, downloads_total, downloads_delta, fetch_timestamp
+      SELECT date, downloads_delta, fetch_timestamp
       FROM daily_summary
       ORDER BY date ASC
     `);
     // Fetch all summary rows
-    const rows = stmt.all() as { date: string; downloads_total: number; downloads_delta: number; fetch_timestamp: string }[];
+    const rows = stmt.all() as { date: string; downloads_delta: number; fetch_timestamp: string }[];
 
     // Map rows to API response format
     const data: DailyDownload[] = rows.map(row => ({
       date: row.date,
-      downloadsTotal: row.downloads_total,
       downloadsDelta: row.downloads_delta,
       fetchTimestamp: row.fetch_timestamp,
     }));

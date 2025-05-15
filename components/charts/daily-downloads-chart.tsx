@@ -14,7 +14,17 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
-import { type DailyDownload } from '@/app/api/downloads/daily/route'; // Adjust if needed
+import { type DailyDownload } from '@/app/api/downloads/daily/route';
+
+// Define available timeframes
+type Timeframe = '1week' | '1month' | '3months' | 'all';
+
+const timeframeOptions: { value: Timeframe; label: string }[] = [
+  { value: '1week', label: '1 Week' },
+  { value: '1month', label: '1 Month' },
+  { value: '3months', label: '3 Months' },
+  { value: 'all', label: 'All Time' },
+];
 
 const chartConfig = {
   downloads: {
@@ -27,12 +37,13 @@ export function DailyDownloadsChart() {
   const [data, setData] = React.useState<DailyDownload[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [timeframe, setTimeframe] = React.useState<Timeframe>('all');
 
   React.useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
-        const response = await fetch('/api/downloads/daily');
+        const response = await fetch(`/api/downloads/daily?timeframe=${timeframe}`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -53,7 +64,7 @@ export function DailyDownloadsChart() {
     }
 
     fetchData();
-  }, []);
+  }, [timeframe]); // Re-fetch when timeframe changes
 
   const formattedData = React.useMemo(() => {
     return data.map(item => ({
@@ -73,6 +84,21 @@ export function DailyDownloadsChart() {
         <CardDescription>
           Net new downloads per day for all portable ComfyUI releases.
         </CardDescription>
+        <div className="flex flex-wrap gap-2 mt-4">
+          {timeframeOptions.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setTimeframe(option.value)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors
+                ${timeframe === option.value 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </CardHeader>
       <CardContent>
         {loading && <p>Loading chart data...</p>}

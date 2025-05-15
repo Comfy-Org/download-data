@@ -78,8 +78,8 @@ export function DailyDownloadsChart() {
     }));
   }, [data]);
 
-  // Chart data uses all daily deltas except the first (which is always an outlier)
-  const chartData = React.useMemo(() => formattedData.slice(1), [formattedData]);
+  // Use all data points without filtering
+  const chartData = formattedData;
 
   return (
     <Card>

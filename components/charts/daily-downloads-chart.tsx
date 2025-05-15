@@ -4,6 +4,7 @@ import * as React from 'react';
 import {
   Area, AreaChart, CartesianGrid, XAxis, YAxis,
 } from 'recharts';
+import clsx from 'clsx';
 
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
@@ -40,10 +41,11 @@ export function DailyDownloadsChart() {
   const [timeframe, setTimeframe] = React.useState<Timeframe>('all');
 
   React.useEffect(() => {
+    const controller = new AbortController();
     async function fetchData() {
       try {
         setLoading(true);
-        const response = await fetch(`/api/downloads/daily?timeframe=${timeframe}`);
+        const response = await fetch(`/api/downloads/daily?timeframe=${timeframe}`, { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -51,6 +53,7 @@ export function DailyDownloadsChart() {
         setData(jsonData);
         setError(null);
       } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') return;
         console.error('Failed to fetch download data:', e);
         if (e instanceof Error) {
           setError(e.message);
@@ -64,6 +67,7 @@ export function DailyDownloadsChart() {
     }
 
     fetchData();
+    return () => controller.abort();
   }, [timeframe]); // Re-fetch when timeframe changes
 
   const formattedData = React.useMemo(() => {
@@ -75,7 +79,7 @@ export function DailyDownloadsChart() {
   }, [data]);
 
   // Chart data uses all daily deltas except the first (which is always an outlier)
-  const chartData = formattedData.slice(1);
+  const chartData = React.useMemo(() => formattedData.slice(1), [formattedData]);
 
   return (
     <Card>
@@ -87,13 +91,16 @@ export function DailyDownloadsChart() {
         <div className="flex flex-wrap gap-2 mt-4">
           {timeframeOptions.map((option) => (
             <button
+              type="button"
+              aria-pressed={timeframe === option.value}
               key={option.value}
               onClick={() => setTimeframe(option.value)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors
-                ${timeframe === option.value 
-                  ? 'bg-primary text-primary-foreground' 
+              className={clsx(
+                'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                timeframe === option.value
+                  ? 'bg-primary text-primary-foreground'
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }`}
+              )}
             >
               {option.label}
             </button>

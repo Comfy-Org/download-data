@@ -10,9 +10,13 @@ const githubApiUrl = `https://api.github.com/repos/${githubRepo}/releases`;
 // Inject PAT from secrets
 const githubToken = process.env.PAT;
 
+function formatDate(date) {
+  return date.toISOString().split('T')[0];
+}
+
 // Ensure data directory exists
 if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir);
+  fs.mkdirSync(dataDir, { recursive: true });
 }
 
 // Connect to SQLite database
@@ -106,8 +110,11 @@ function storeDailyStats(releases) {
 // Add new function to calculate and store daily summary
 function storeDailySummary() {
   console.log('Storing daily summary...');
-  const today = new Date().toISOString().split('T')[0];
-  const yesterdayDate = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  const today = new Date();
+  const todayDate = formatDate(today);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const yesterdayDate = formatDate(yesterday);
   // Calculate delta per asset to avoid negative values when assets are missing
   const deltaRow = db.prepare(`
     SELECT
@@ -121,13 +128,13 @@ function storeDailySummary() {
     LEFT JOIN asset_daily_stats AS old
       ON new.asset_id = old.asset_id AND old.date = ?
     WHERE new.date = ?
-  `).get(yesterdayDate, today);
+  `).get(yesterdayDate, todayDate);
   const delta = deltaRow.delta;
   const insertSummary = db.prepare(
     `INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`
   );
-  insertSummary.run(today, delta);
-  console.log(`Daily summary stored for ${today}: delta=${delta}`);
+  insertSummary.run(todayDate, delta);
+  console.log(`Daily summary stored for ${todayDate}: delta=${delta}`);
 }
 
 // --- Main Execution ---
@@ -142,13 +149,12 @@ async function main() {
   } finally {
     // Close the database connection
     if (db) {
-      db.close((err) => {
-        if (err) {
-          console.error('Error closing database:', err.message);
-        } else {
-          console.log('Database connection closed.');
-        }
-      });
+      try {
+        db.close();
+        console.log('Database connection closed.');
+      } catch (err) {
+        console.error('Error closing database:', err.message);
+      }
     }
   }
 }

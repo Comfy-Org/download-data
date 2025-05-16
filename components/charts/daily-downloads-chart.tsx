@@ -87,6 +87,33 @@ export function DailyDownloadsChart() {
         <CardTitle>Daily New Downloads</CardTitle>
         <CardDescription>
           Net new downloads per day for all portable ComfyUI releases.
+          {data.length > 1 && (
+            <div className="mt-2">
+              <p className="text-sm">
+                <span className="font-medium">Change over timeframe:</span>
+                <span className={`ml-2 ${
+                  data[data.length - 1].downloadsDelta - data[0].downloadsDelta > 0
+                    ? 'text-green-600'
+                    : data[data.length - 1].downloadsDelta - data[0].downloadsDelta < 0
+                    ? 'text-red-600'
+                    : 'text-gray-600'
+                }`}>
+                  {data[data.length - 1].downloadsDelta - data[0].downloadsDelta > 0 ? '+' : ''}
+                  {(data[data.length - 1].downloadsDelta - data[0].downloadsDelta).toLocaleString()} downloads/day
+                </span>
+                <span className="ml-2">
+                  ({
+                    data[data.length - 1].downloadsDelta - data[0].downloadsDelta > 0
+                      ? '+'
+                      : data[data.length - 1].downloadsDelta - data[0].downloadsDelta < 0
+                      ? '-'
+                      : ''
+                  }
+                  {Math.abs((data[data.length - 1].downloadsDelta - data[0].downloadsDelta) / data[0].downloadsDelta * 100).toFixed(1)}%)
+                </span>
+              </p>
+            </div>
+          )}
         </CardDescription>
         <div className="flex flex-wrap gap-2 mt-4">
           {timeframeOptions.map((option) => (

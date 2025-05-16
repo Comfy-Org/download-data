@@ -18,7 +18,7 @@ function getDateThreshold(timeframe: Timeframe): string | null {
   const date = new Date();
   switch (timeframe) {
     case '1week':
-      date.setDate(date.getDate() - 7);
+      date.setDate(date.getDate() - 6); // Show exactly 7 days (today + 6 days before)
       break;
     case '1month':
       date.setMonth(date.getMonth() - 1);

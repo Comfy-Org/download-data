@@ -14,24 +14,6 @@ export interface DailyDownload {
 const ALLOWED_TIMEFRAMES = ['1week', '1month', '3months', 'all'] as const;
 type Timeframe = typeof ALLOWED_TIMEFRAMES[number];
 
-function getDateThreshold(timeframe: Timeframe): string | null {
-  const date = new Date();
-  switch (timeframe) {
-    case '1week':
-      date.setDate(date.getDate() - 6); // Show exactly 7 days (today + 6 days before)
-      break;
-    case '1month':
-      date.setMonth(date.getMonth() - 1);
-      break;
-    case '3months':
-      date.setMonth(date.getMonth() - 3);
-      break;
-    default:
-      return null;
-  }
-  return date.toISOString().split('T')[0];
-}
-
 export async function GET(request: Request) {
   // Parse the timeframe from the URL query parameters
   const { searchParams } = new URL(request.url);
@@ -39,7 +21,14 @@ export async function GET(request: Request) {
   const timeframe: Timeframe = rawTimeframe && ALLOWED_TIMEFRAMES.includes(rawTimeframe as Timeframe)
     ? (rawTimeframe as Timeframe)
     : 'all';
-  const dateThreshold = getDateThreshold(timeframe);
+  // Determine how many recent data points to return for each timeframe
+  const POINT_COUNTS: Record<Timeframe, number | null> = {
+    '1week': 7,
+    '1month': 30,
+    '3months': 90,
+    'all': null,
+  };
+  const maxRows = POINT_COUNTS[timeframe];
   
   const dataDir = path.resolve(process.cwd(), 'data');
   const dbPath = path.join(dataDir, 'downloads.db');
@@ -58,17 +47,25 @@ export async function GET(request: Request) {
     // Connect to the SQLite database (read-only)
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
 
-    // Query daily_summary with optional date threshold
-    const query = `
-      SELECT date, downloads_delta, fetch_timestamp
-      FROM daily_summary
-      ${dateThreshold ? 'WHERE date >= ?' : ''}
-      ORDER BY date ASC
-    `;
-    const rows = (dateThreshold
-      ? db.prepare(query).all(dateThreshold)
-      : db.prepare(query).all()
-    ) as { date: string; downloads_delta: number; fetch_timestamp: string }[];
+    // Fetch either the last N rows or all rows
+    let rows: { date: string; downloads_delta: number; fetch_timestamp: string }[];
+    if (maxRows) {
+      // Get most recent maxRows entries, then reverse to chronological order
+      const recentDesc = db.prepare(
+        `SELECT date, downloads_delta, fetch_timestamp
+         FROM daily_summary
+         ORDER BY date DESC
+         LIMIT ?`
+      ).all(maxRows) as typeof rows;
+      rows = recentDesc.reverse();
+    } else {
+      // Return all data
+      rows = db.prepare(
+        `SELECT date, downloads_delta, fetch_timestamp
+         FROM daily_summary
+         ORDER BY date ASC`
+      ).all() as typeof rows;
+    }
 
     // Map rows to API response format
     const data: DailyDownload[] = rows.map(row => ({

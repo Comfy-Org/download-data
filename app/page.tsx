@@ -1,4 +1,5 @@
 import { DailyDownloadsChart } from "@/components/charts/daily-downloads-chart";
+import { NextUpdateCountdown } from "@/components/countdown";
 
 export default function Home() {
   return (
@@ -8,6 +9,7 @@ export default function Home() {
       </header>
       <main className="w-full max-w-4xl">
         <DailyDownloadsChart />
+        <NextUpdateCountdown />
         {/* You can add more charts or data displays here */}
       </main>
       <footer className="mt-12 text-center text-muted-foreground">

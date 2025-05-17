@@ -14,23 +14,28 @@ function computeNextUpdateTime(now: Date) {
 }
 
 export function NextUpdateCountdown() {
-  const target = React.useMemo(
-    () => computeNextUpdateTime(new Date()).getTime(),
-    [],
+  const [target, setTarget] = React.useState<number>(
+    () => computeNextUpdateTime(new Date()).getTime()
   )
 
   const [remaining, setRemaining] = React.useState<number>(
-    target - Date.now(),
+    target - Date.now()
   )
 
   React.useEffect(() => {
     function tick() {
-      const diff = target - Date.now()
-      if (diff <= 0) return setRemaining(0)
+      const now = Date.now()
+      const diff = target - now
+      if (diff <= 0) {
+        const nextTarget = computeNextUpdateTime(new Date()).getTime()
+        setTarget(nextTarget)
+        setRemaining(nextTarget - now)
+        return
+      }
       setRemaining(diff)
 
       // schedule precisely for the next second boundary
-      const delay = 1000 - (Date.now() % 1000)
+      const delay = 1000 - (now % 1000)
       timeoutId = window.setTimeout(tick, delay)
     }
 

@@ -9,13 +9,13 @@
 - `public/` – Static assets.
 
 ## Build, Test, and Development Commands
-- `npm run dev` – Start the Next.js dev server (Turbopack).
-- `npm run build` – Production build.
-- `npm start` – Serve the production build.
-- `npm run lint` – ESLint (fix issues locally before PRs).
-- `npm run getdata` – Run `scripts/fetch-data.mjs` to refresh `data/downloads.db`.
-- Typecheck: `npx tsc --noEmit`.
-- E2E (if added): `npx playwright test --reporter=line`.
+- `pnpm dev` – Start the Next.js dev server (Turbopack).
+- `pnpm build` – Production build.
+- `pnpm start` – Serve the production build.
+- `pnpm lint` / `pnpm lint:fix` – ESLint (fix issues locally before PRs).
+- `pnpm getdata` – Run `scripts/fetch-data.mjs` to refresh `data/downloads.db`.
+- Typecheck: `pnpm typecheck`.
+- E2E (if added): `pnpm exec playwright test --reporter=line`.
 
 ## Coding Style & Naming Conventions
 - Language: TypeScript for app/API; Node ESM for scripts. Avoid type assertions; narrow via guards.
@@ -32,10 +32,9 @@
 ## Commit & Pull Request Guidelines
 - Use Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`. Example: `chore: update download data`.
 - PRs include: clear description, linked issues, screenshots for UI changes, and notes for any schema/migration updates.
-- Before opening a PR: `npm run lint`, `npx tsc --noEmit`, and (if relevant) `npm run getdata` to validate the fetcher locally.
+- Before opening a PR: `pnpm lint:fix`, `pnpm typecheck`, and (if relevant) `pnpm getdata` to validate the fetcher locally.
 
 ## Security & Configuration Tips
 - Keep secrets out of the repo. CI uses `secrets.PAT` for scheduled fetches.
 - Fetcher env filters: `ASSET_NAME_INCLUDE` (regex), `EXCLUDE_DRAFTS=true`, `EXCLUDE_PRERELEASES=true`.
 - Validate API inputs and avoid exposing any write endpoints.
-

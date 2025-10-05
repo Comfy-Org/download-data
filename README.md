@@ -27,16 +27,14 @@ This project fetches release and asset download data from the ComfyUI GitHub rep
 ### Prerequisites
 
 - Node.js v22 or newer (tested with v22)
-- npm, yarn, or pnpm as package manager
+- pnpm as package manager (v10 recommended)
 
 ### Installation
 
 ```bash
 git clone https://github.com/comfyanonymous/comfy-download-data.git
 cd comfy-download-data
-npm install
-# or yarn install
-# or pnpm install
+pnpm install
 ```
 
 ### Fetching Data
@@ -44,8 +42,8 @@ npm install
 Run the data fetching script to create or update the SQLite database:
 
 ```bash
-npm run getdata
-# or node scripts/fetch-data.mjs
+pnpm getdata
+# or: node scripts/fetch-data.mjs
 ```
 
 This populates `data/downloads.db` and updates daily summaries.
@@ -55,8 +53,7 @@ This populates `data/downloads.db` and updates daily summaries.
 Start the development server:
 
 ```bash
-npm run dev
-# or yarn dev
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
@@ -64,8 +61,8 @@ Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
 ### Building for Production
 
 ```bash
-npm run build
-npm run start
+pnpm build
+pnpm start
 ```
 
 ## Database Schema

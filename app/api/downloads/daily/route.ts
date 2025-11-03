@@ -14,6 +14,8 @@ export interface DailyDownload {
 const ALLOWED_TIMEFRAMES = ['1week', '1month', '3months', 'all'] as const;
 type Timeframe = typeof ALLOWED_TIMEFRAMES[number];
 
+export const runtime = 'nodejs';
+
 export async function GET(request: Request) {
   // Parse the timeframe from the URL query parameters
   const { searchParams } = new URL(request.url);

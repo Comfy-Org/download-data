@@ -112,6 +112,36 @@ CREATE TABLE IF NOT EXISTS daily_summary (
 );
 ```
 
+### backfill_events
+
+Records when the fetcher backfills missing days.
+
+Column | Type | Description
+--- | --- | ---
+id | INTEGER | Auto-increment primary key.
+start_date | TEXT | First backfilled date `YYYY-MM-DD`.
+end_date | TEXT | Last backfilled date `YYYY-MM-DD`.
+strategy | TEXT | `even`, `pattern`, or `stochastic`.
+lookback_days | INTEGER | Lookback window used, if applicable.
+trend_window | INTEGER | Trend window used, if applicable.
+noise_scale | REAL | Noise scale used, if applicable.
+total_delta | INTEGER | Total downloads distributed across the backfilled span.
+created_at | TEXT | Timestamp when the event was recorded.
+
+```sql
+CREATE TABLE IF NOT EXISTS backfill_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  strategy TEXT NOT NULL,
+  lookback_days INTEGER,
+  trend_window INTEGER,
+  noise_scale REAL,
+  total_delta INTEGER NOT NULL,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+```
+
 ### Backfill Behavior
 
 If the fetch process misses days, the script evenly distributes the total change
@@ -140,6 +170,23 @@ A workflow in `.github/workflows/fetch-data.yml` is configured to:
 
 1. Run the fetch script daily at 10:49 UTC.
 2. Commit changes to `data/downloads.db` if new data is fetched.
+
+## Backfill Annotations in UI
+
+The dashboard shades backfilled date ranges and shows a short note above the chart. Data is served via `GET /api/backfill/events?timeframe=...` and rendered as subtle `ReferenceArea` overlays.
+
+## Daily Bucketing & Scheduling
+
+Data is assigned to a canonical daily “bucket” defined by a UTC cutoff time.
+
+- `DAILY_CUTOFF_UTC`: HH:mm UTC string (default: `10:49`). If a run occurs before this time, data is bucketed to the previous date; otherwise to the current date.
+- `BUCKET_WRITE_MODE`: `once` (default) or `replace`.
+  - `once`: if `asset_daily_stats` already has rows for the bucket date, the script skips writing asset rows again. This prevents manual, late-day runs from inflating the current bucket and reducing the following day’s delta.
+  - `replace`: always overwrite the bucket’s asset rows.
+- `SUMMARY_WRITE_MODE`: `once` (default) or `replace`.
+  - Controls writes to `daily_summary`. In `once`, `INSERT OR IGNORE` preserves the first summary written for a bucket.
+
+Tip: Keep `BUCKET_WRITE_MODE=once` and `SUMMARY_WRITE_MODE=once` to maintain consistent day-over-day deltas even if you trigger manual runs mid‑day.
 
 ## Contributing
 

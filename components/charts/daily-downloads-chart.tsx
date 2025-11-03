@@ -1,9 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import {
-  Area, AreaChart, CartesianGrid, XAxis, YAxis,
-} from 'recharts';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceArea } from 'recharts';
 import clsx from 'clsx';
 
 import {
@@ -16,6 +14,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { type DailyDownload } from '@/app/api/downloads/daily/route';
+import { type BackfillEvent } from '@/app/api/backfill/events/route';
 
 // Define available timeframes
 type Timeframe = '1week' | '1month' | '3months' | 'all';
@@ -39,18 +38,29 @@ export function DailyDownloadsChart() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [timeframe, setTimeframe] = React.useState<Timeframe>('1month');
+  const [events, setEvents] = React.useState<BackfillEvent[]>([]);
 
   React.useEffect(() => {
     const controller = new AbortController();
     async function fetchData() {
       try {
         setLoading(true);
-        const response = await fetch(`/api/downloads/daily?timeframe=${timeframe}`, { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        const [r1, r2] = await Promise.all([
+          fetch(`/api/downloads/daily?timeframe=${timeframe}`, { signal: controller.signal }),
+          fetch(`/api/backfill/events?timeframe=${timeframe}`, { signal: controller.signal }),
+        ]);
+        if (!r1.ok) {
+          throw new Error(`HTTP error! status: ${r1.status}`);
         }
-        const jsonData: DailyDownload[] = await response.json();
+        if (!r2.ok) {
+          throw new Error(`HTTP error! status: ${r2.status}`);
+        }
+        const [jsonData, eventsData] = await Promise.all([
+          r1.json() as Promise<DailyDownload[]>,
+          r2.json() as Promise<BackfillEvent[]>,
+        ]);
         setData(jsonData);
+        setEvents(eventsData);
         setError(null);
       } catch (e) {
         if (e instanceof Error && e.name === 'AbortError') return;
@@ -60,7 +70,8 @@ export function DailyDownloadsChart() {
         } else {
           setError('An unknown error occurred');
         }
-        setData([]); // Clear data on error
+        setData([]);
+        setEvents([]);
       } finally {
         setLoading(false);
       }
@@ -87,6 +98,11 @@ export function DailyDownloadsChart() {
         <CardTitle>Daily New Downloads</CardTitle>
         <CardDescription>
           Net new downloads per day for all portable ComfyUI releases.
+          {events.length > 0 && (
+            <div className="mt-1 text-xs text-muted-foreground">
+              Backfilled data present: {events.map((e) => `${e.startDate}→${e.endDate} (${e.strategy})`).join(', ')}
+            </div>
+          )}
           {data.length > 1 && (
             <div className="mt-2">
               <p className="text-sm">
@@ -167,6 +183,9 @@ export function DailyDownloadsChart() {
                  tickMargin={8}
                  tickFormatter={(value) => value.toLocaleString()} // Format Y-axis numbers
               />
+              {events.map((e, idx) => (
+                <ReferenceArea key={`${e.startDate}-${e.endDate}-${idx}`} x1={e.startDate} x2={e.endDate} fill="#8884d8" fillOpacity={0.08} />
+              ))}
               <ChartTooltip
                 cursor={false}
                 content={<ChartTooltipContent indicator="dot" hideLabel />}

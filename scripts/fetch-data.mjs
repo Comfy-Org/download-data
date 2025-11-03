@@ -17,6 +17,13 @@ const backfillNoiseScale = Number.parseFloat(process.env.BACKFILL_NOISE_SCALE ||
 const backfillTrendWindow = Number.parseInt(process.env.BACKFILL_TREND_WINDOW || '21', 10);
 const backfillRandomSeed = process.env.BACKFILL_RANDOM_SEED || null;
 const backfillStochasticFallback = (process.env.BACKFILL_STOCHASTIC_FALLBACK || 'even').toLowerCase();
+/** Daily bucketing controls */
+/** UTC cutoff time in 'HH:mm' */
+const cutoffUTC = process.env.DAILY_CUTOFF_UTC || '10:49';
+/** Asset bucket write mode: 'once' | 'replace' */
+const bucketWriteMode = (process.env.BUCKET_WRITE_MODE || 'once').toLowerCase();
+/** Summary write mode: 'once' | 'replace' */
+const summaryWriteMode = (process.env.SUMMARY_WRITE_MODE || 'once').toLowerCase();
 
 /**
  * Formats a Date to YYYY-MM-DD.
@@ -51,6 +58,32 @@ function daysBetweenExclusiveInclusive(startDateString, endDateString) {
   const msPerDay = 24 * 60 * 60 * 1000;
   const diff = Math.round((end.getTime() - start.getTime()) / msPerDay);
   return diff;
+}
+
+function parseCutoffToMinutes(value) {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!m) throw new Error(`Invalid DAILY_CUTOFF_UTC: ${value}`);
+  const hh = Number.parseInt(m[1], 10);
+  const mm = Number.parseInt(m[2], 10);
+  return hh * 60 + mm;
+}
+
+function getBucketDate(now = new Date()) {
+  const cutoffMinutes = parseCutoffToMinutes(cutoffUTC);
+  const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (nowMinutes < cutoffMinutes) {
+    base.setUTCDate(base.getUTCDate() - 1);
+  }
+  return formatDate(base);
+}
+
+function getSummaryUpsertStmt() {
+  return db.prepare(
+    summaryWriteMode === 'replace'
+      ? `INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`
+      : `INSERT OR IGNORE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`
+  );
 }
 
 /**
@@ -221,6 +254,19 @@ function setupDatabase() {
       fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS backfill_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      lookback_days INTEGER,
+      trend_window INTEGER,
+      noise_scale REAL,
+      total_delta INTEGER NOT NULL,
+      created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+  `);
   console.log('Database tables ensured.');
 }
 
@@ -255,7 +301,14 @@ async function fetchGitHubReleases() {
 // --- Daily Stats Storage ---
 function storeDailyStats(releases) {
   console.log('Storing daily asset stats...');
-  const today = new Date().toISOString().split('T')[0];
+  const today = getBucketDate(new Date());
+  if (bucketWriteMode === 'once') {
+    const exists = db.prepare(`SELECT 1 FROM asset_daily_stats WHERE date = ? LIMIT 1;`).get(today);
+    if (exists) {
+      console.log(`Bucket ${today} already has asset stats (mode=once); skipping asset writes.`);
+      return;
+    }
+  }
   const insert = db.prepare(`
     INSERT OR REPLACE INTO asset_daily_stats
     (asset_id, asset_name, tag_name, date, download_count, draft, prerelease)
@@ -285,12 +338,10 @@ function storeDailyStats(releases) {
 function storeDailySummary() {
   console.log('Storing daily summary...');
   const today = new Date();
-  const todayDate = formatDate(today);
+  const todayDate = getBucketDate(today);
 
   if (backfillStrategy === 'none') {
-    const yesterday = new Date(today);
-    yesterday.setUTCDate(today.getUTCDate() - 1);
-    const yesterdayDate = formatDate(yesterday);
+    const yesterdayDate = addDays(todayDate, -1);
     const deltaRow = db.prepare(`
       SELECT
         COALESCE(SUM(
@@ -305,7 +356,7 @@ function storeDailySummary() {
       WHERE new.date = ?
     `).get(yesterdayDate, todayDate);
     const delta = deltaRow.delta;
-    const upsert = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    const upsert = getSummaryUpsertStmt();
     upsert.run(todayDate, delta);
     console.log(`Daily summary stored (no backfill) for ${todayDate}: delta=${delta}`);
     return;
@@ -346,7 +397,7 @@ function storeDailySummary() {
       WHERE new.date = ?
     `).get(yesterdayDate, todayDate);
     const delta = deltaRow.delta;
-    const upsert = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    const upsert = getSummaryUpsertStmt();
     upsert.run(todayDate, delta);
     console.log(`Daily summary stored (small gap) for ${todayDate}: delta=${delta}`);
     return;
@@ -385,7 +436,7 @@ function storeDailySummary() {
       if (backfillPatternFallback === 'even') {
         const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
         const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
-        const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const upsertEven = getSummaryUpsertStmt();
         const txEven = db.transaction((dates) => {
           dates.forEach((d, i) => {
             const value = base + (i < remainder ? 1 : 0);
@@ -394,6 +445,11 @@ function storeDailySummary() {
         });
         txEven(gapDates);
         console.log(`Backfilled ${gapDates.length} day(s) evenly (pattern unavailable) with total delta=${totalDelta}`);
+        const insertEventEvenA = db.prepare(
+          `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+           VALUES (?, ?, 'even', ?, NULL, NULL, ?)`
+        );
+        insertEventEvenA.run(gapDates[0], gapDates[gapDates.length - 1], backfillLookbackDays, totalDelta);
         return;
       }
       throw new Error('Pattern backfill unavailable and fallback is not even.');
@@ -403,7 +459,7 @@ function storeDailySummary() {
       if (backfillPatternFallback === 'even') {
         const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
         const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
-        const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const upsertEven = getSummaryUpsertStmt();
         const txEven = db.transaction((dates) => {
           dates.forEach((d, i) => {
             const value = base + (i < remainder ? 1 : 0);
@@ -412,11 +468,16 @@ function storeDailySummary() {
         });
         txEven(gapDates);
         console.log(`Backfilled ${gapDates.length} day(s) evenly (pattern invalid) with total delta=${totalDelta}`);
+        const insertEventEvenB = db.prepare(
+          `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+           VALUES (?, ?, 'even', ?, NULL, NULL, ?)`
+        );
+        insertEventEvenB.run(gapDates[0], gapDates[gapDates.length - 1], backfillLookbackDays, totalDelta);
         return;
       }
       throw new Error('Invalid pattern for backfill and fallback is not even.');
     }
-    const upsertPattern = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    const upsertPattern = getSummaryUpsertStmt();
     const txPattern = db.transaction((dates, values) => {
       dates.forEach((d, i) => {
         upsertPattern.run(d, values[i]);
@@ -426,6 +487,11 @@ function storeDailySummary() {
     console.log(
       `Backfilled ${gapDates.length} day(s) with pattern from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} (lookback=${backfillLookbackDays}, total delta=${totalDelta})`
     );
+    const insertEventPattern = db.prepare(
+      `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+       VALUES (?, ?, 'pattern', ?, NULL, NULL, ?)`
+    );
+    insertEventPattern.run(gapDates[0], gapDates[gapDates.length - 1], backfillLookbackDays, totalDelta);
     return;
   }
 
@@ -460,14 +526,13 @@ function storeDailySummary() {
     const scaled = scaleSeriesToTotal(raw, totalDelta);
     if (scaled === null || scaled.every((v) => v === 0) && totalDelta > 0) {
       if (backfillStochasticFallback === 'pattern') {
-        // reuse pattern branch by setting strategy temporarily
         const pattern = buildPatternSeries(baseline, gapDates.length);
         const scaledPattern = scaleSeriesToTotal(pattern, totalDelta);
         if (scaledPattern === null) {
           if (backfillPatternFallback === 'even') {
             const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
             const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
-            const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+            const upsertEven = getSummaryUpsertStmt();
             const txEven = db.transaction((dates) => {
               dates.forEach((d, i) => {
                 const value = base + (i < remainder ? 1 : 0);
@@ -476,11 +541,16 @@ function storeDailySummary() {
             });
             txEven(gapDates);
             console.log(`Backfilled ${gapDates.length} day(s) evenly (pattern invalid) with total delta=${totalDelta}`);
+            const insertEventEvenC = db.prepare(
+              `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+               VALUES (?, ?, 'even', ?, NULL, NULL, ?)`
+            );
+            insertEventEvenC.run(gapDates[0], gapDates[gapDates.length - 1], backfillLookbackDays, totalDelta);
             return;
           }
           throw new Error('Pattern fallback invalid and BACKFILL_PATTERN_FALLBACK!=even.');
         }
-        const upsertPattern = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const upsertPattern = getSummaryUpsertStmt();
         const txPattern = db.transaction((dates, values) => {
           dates.forEach((d, i) => {
             upsertPattern.run(d, values[i]);
@@ -490,12 +560,17 @@ function storeDailySummary() {
         console.log(
           `Backfilled ${gapDates.length} day(s) with pattern (stochastic fallback) from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} (lookback=${backfillLookbackDays}, total delta=${totalDelta})`
         );
+        const insertEventPatternFallback = db.prepare(
+          `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+           VALUES (?, ?, 'pattern', ?, NULL, NULL, ?)`
+        );
+        insertEventPatternFallback.run(gapDates[0], gapDates[gapDates.length - 1], backfillLookbackDays, totalDelta);
         return;
       }
       if (backfillStochasticFallback === 'even') {
         const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
         const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
-        const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const upsertEven = getSummaryUpsertStmt();
         const txEven = db.transaction((dates) => {
           dates.forEach((d, i) => {
             const value = base + (i < remainder ? 1 : 0);
@@ -504,12 +579,17 @@ function storeDailySummary() {
         });
         txEven(gapDates);
         console.log(`Backfilled ${gapDates.length} day(s) evenly (stochastic unavailable) with total delta=${totalDelta}`);
+        const insertEventEvenD = db.prepare(
+          `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+           VALUES (?, ?, 'even', ?, NULL, NULL, ?)`
+        );
+        insertEventEvenD.run(gapDates[0], gapDates[gapDates.length - 1], backfillLookbackDays, totalDelta);
         return;
       }
       throw new Error('Stochastic backfill unavailable and fallback is not even/pattern.');
     }
 
-    const upsertStochastic = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    const upsertStochastic = getSummaryUpsertStmt();
     const txStochastic = db.transaction((dates, values) => {
       dates.forEach((d, i) => {
         upsertStochastic.run(d, values[i]);
@@ -519,12 +599,24 @@ function storeDailySummary() {
     console.log(
       `Backfilled ${gapDates.length} day(s) with stochastic series from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} (lookback=${backfillLookbackDays}, slope=${slope.toFixed(4)}, sigma=${sigma.toFixed(4)}, total delta=${totalDelta})`
     );
+    const insertEventStochastic = db.prepare(
+      `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+       VALUES (?, ?, 'stochastic', ?, ?, ?, ?)`
+    );
+    insertEventStochastic.run(
+      gapDates[0],
+      gapDates[gapDates.length - 1],
+      backfillLookbackDays,
+      backfillTrendWindow,
+      backfillNoiseScale,
+      totalDelta
+    );
     return;
   }
 
   const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
   const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
-  const upsert = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+  const upsert = getSummaryUpsertStmt();
   const tx = db.transaction((dates) => {
     dates.forEach((d, i) => {
       const value = base + (i < remainder ? 1 : 0);
@@ -535,6 +627,11 @@ function storeDailySummary() {
   console.log(
     `Backfilled ${gapDates.length} day(s) evenly from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} with total delta=${totalDelta}`
   );
+  const insertEventEvenFinal = db.prepare(
+    `INSERT INTO backfill_events (start_date, end_date, strategy, lookback_days, trend_window, noise_scale, total_delta)
+     VALUES (?, ?, 'even', ?, NULL, NULL, ?)`
+  );
+  insertEventEvenFinal.run(gapDates[0], gapDates[gapDates.length - 1], backfillLookbackDays, totalDelta);
 }
 
 // --- Main Execution ---

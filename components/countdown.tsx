@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 
 function computeNextUpdateTime(now: Date) {
   const next = new Date(Date.UTC(
@@ -54,8 +55,19 @@ export function NextUpdateCountdown() {
   const ss = String(seconds).padStart(2, '0')
 
   return (
-    <p className="text-sm text-center mt-4">
-      Next data update in {hours}h {mm}m {ss}s&nbsp;(10:49 UTC)
+    <p className="text-sm text-center mt-4 flex items-center justify-center gap-2">
+      <span>
+        Next data update in {hours}h {mm}m {ss}s&nbsp;(10:49 UTC)
+      </span>
+      <a
+        href="https://github.com/benceruleanlu/comfyui-download-data"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Open GitHub repository"
+        className="inline-flex items-center"
+      >
+        <Image src="/github-mark.svg" alt="GitHub" width={24} height={24} />
+      </a>
     </p>
   )
 }

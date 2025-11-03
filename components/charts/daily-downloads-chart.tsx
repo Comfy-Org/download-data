@@ -92,6 +92,24 @@ export function DailyDownloadsChart() {
   // Use all data points without filtering
   const chartData = formattedData;
 
+  /**
+   * Formats an ISO date string (YYYY-MM-DD) into a compact form.
+   * Example: 2025-11-03 -> Nov 3
+   */
+  function formatIsoDateToAbbreviatedMonthDay(value: string): string {
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!isoMatch) return value;
+    const monthIndex = Number(isoMatch[2]) - 1;
+    const day = Number(isoMatch[3]);
+    if (!Number.isFinite(monthIndex) || !Number.isFinite(day)) return value;
+    const monthAbbreviations = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ] as const;
+    if (monthIndex < 0 || monthIndex > 11) return value;
+    return `${monthAbbreviations[monthIndex]} ${day}`;
+  }
+
   const backfillAnnotations = React.useMemo(() => {
     if (chartData.length === 0 || events.length === 0) return [] as { key: string; x: string; text: string }[];
     const dates = chartData.map((d) => d.date);
@@ -200,7 +218,9 @@ export function DailyDownloadsChart() {
                 tickLine={false}
                 axisLine={false}
                 tickMargin={8}
-                // tickFormatter={(value) => value.slice(5)} // Optionally format date ticks (MM-DD)
+                tickFormatter={formatIsoDateToAbbreviatedMonthDay}
+                minTickGap={28}
+                interval="preserveStartEnd"
               />
               <YAxis
                  tickLine={false}

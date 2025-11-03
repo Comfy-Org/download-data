@@ -119,13 +119,20 @@ between the last available snapshot and today across all missing days. This avoi
 one-day spikes when resuming after a gap.
 
 Environment variables:
-- `BACKFILL_STRATEGY`: `even` (default), `pattern`, or `none`.
+- `BACKFILL_STRATEGY`: `even` (default), `pattern`, `stochastic`, or `none`.
   - `even`: distribute evenly across the gap.
   - `pattern`: replay recent variability and scale to the gap’s total.
+  - `stochastic`: synthesize a series using recent trend and noise, then scale to match the gap’s total (deterministic with seed).
   - `none`: disable backfill; use only the previous day’s diff.
 - `BACKFILL_MIN_GAP_DAYS`: minimum number of missing days to trigger backfill (default: `2`).
 - `BACKFILL_LOOKBACK_DAYS`: number of days to learn the pattern shape from for `pattern` (default: `30`).
 - `BACKFILL_PATTERN_FALLBACK`: behavior when pattern is unavailable or invalid; `even` (default) or `fail`.
+  
+Stochastic options:
+- `BACKFILL_TREND_WINDOW`: moving-average window for trend estimation (default: `7`).
+- `BACKFILL_NOISE_SCALE`: multiplier for noise standard deviation derived from recent daily changes (default: `1`).
+- `BACKFILL_RANDOM_SEED`: optional fixed seed; defaults to a deterministic seed derived from dates.
+- `BACKFILL_STOCHASTIC_FALLBACK`: `even` (default), `pattern`, or `fail`.
 
 ## GitHub Actions Workflow
 

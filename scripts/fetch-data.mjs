@@ -13,6 +13,10 @@ const backfillStrategy = (process.env.BACKFILL_STRATEGY || 'even').toLowerCase()
 const backfillMinimumGapDays = Number.parseInt(process.env.BACKFILL_MIN_GAP_DAYS || '2', 10);
 const backfillLookbackDays = Number.parseInt(process.env.BACKFILL_LOOKBACK_DAYS || '30', 10);
 const backfillPatternFallback = (process.env.BACKFILL_PATTERN_FALLBACK || 'even').toLowerCase();
+const backfillNoiseScale = Number.parseFloat(process.env.BACKFILL_NOISE_SCALE || '1');
+const backfillTrendWindow = Number.parseInt(process.env.BACKFILL_TREND_WINDOW || '21', 10);
+const backfillRandomSeed = process.env.BACKFILL_RANDOM_SEED || null;
+const backfillStochasticFallback = (process.env.BACKFILL_STOCHASTIC_FALLBACK || 'even').toLowerCase();
 
 /**
  * Formats a Date to YYYY-MM-DD.
@@ -87,6 +91,101 @@ function buildPatternSeries(baseline, targetLength) {
     i += 1;
   }
   return result;
+}
+
+/**
+ * Simple deterministic PRNG (mulberry32) seeded by a 32-bit integer.
+ */
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function () {
+    t = (t + 0x6D2B79F5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Hashes a string into a 32-bit unsigned integer for seeding.
+ */
+function hashStringToSeed(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Returns a function that produces N(0,1) samples using Box-Muller with the given PRNG.
+ */
+function makeNormalGenerator(prng) {
+  let spare = null;
+  return function normal() {
+    if (spare !== null) {
+      const v = spare;
+      spare = null;
+      return v;
+    }
+    let u = 0, v = 0, s = 0;
+    do {
+      u = prng() * 2 - 1;
+      v = prng() * 2 - 1;
+      s = u * u + v * v;
+    } while (s === 0 || s >= 1);
+    const mul = Math.sqrt(-2.0 * Math.log(s) / s);
+    spare = v * mul;
+    return u * mul;
+  };
+}
+
+/**
+ * Computes a trailing moving average with the given window. Non-negative clamp.
+ */
+function computeMovingAverage(series, window) {
+  if (window <= 1) return series.slice();
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < series.length; i++) {
+    sum += series[i];
+    if (i >= window) sum -= series[i - window];
+    const denom = Math.min(i + 1, window);
+    out.push(Math.max(0, sum / denom));
+  }
+  return out;
+}
+
+/**
+ * Computes a simple linear regression slope over equally spaced x for y series.
+ */
+function computeLinearTrendSlope(series) {
+  const n = series.length;
+  if (n < 2) return 0;
+  const meanX = (n - 1) / 2;
+  const meanY = series.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = i - meanX;
+    num += dx * (series[i] - meanY);
+    den += dx * dx;
+  }
+  if (den === 0) return 0;
+  return num / den;
+}
+
+/**
+ * Computes standard deviation of first differences of a series.
+ */
+function computeDeltaStd(series) {
+  if (series.length < 2) return 0;
+  const deltas = [];
+  for (let i = 1; i < series.length; i++) deltas.push(series[i] - series[i - 1]);
+  const mean = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+  const varSum = deltas.reduce((a, b) => a + (b - mean) * (b - mean), 0) / deltas.length;
+  return Math.sqrt(varSum);
 }
 
 // Ensure data directory exists
@@ -326,6 +425,99 @@ function storeDailySummary() {
     txPattern(gapDates, scaled);
     console.log(
       `Backfilled ${gapDates.length} day(s) with pattern from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} (lookback=${backfillLookbackDays}, total delta=${totalDelta})`
+    );
+    return;
+  }
+
+  if (backfillStrategy === 'stochastic') {
+    if (totalDelta < 0) {
+      throw new Error('Negative total delta for stochastic backfill.');
+    }
+    const baselineRows = db.prepare(
+      `SELECT date, downloads_delta
+       FROM daily_summary
+       WHERE date < ?
+       ORDER BY date DESC
+       LIMIT ?`
+    ).all(lastSnapshotDate, backfillLookbackDays);
+    const baseline = baselineRows.map((r) => Number(r.downloads_delta || 0)).reverse();
+    const ma = computeMovingAverage(baseline, Math.max(2, backfillTrendWindow));
+    const slope = computeLinearTrendSlope(ma);
+    const maLast = ma.length > 0 ? ma[ma.length - 1] : 0;
+    const sigma = computeDeltaStd(baseline) * (Number.isFinite(backfillNoiseScale) ? backfillNoiseScale : 1);
+
+    const seedString = backfillRandomSeed || `${lastSnapshotDate}|${todayDate}`;
+    const prng = mulberry32(hashStringToSeed(seedString));
+    const normal = makeNormalGenerator(prng);
+
+    const raw = gapDates.map((_, i) => {
+      const trend = Math.max(0, maLast + slope * (i + 1));
+      const noise = sigma > 0 ? normal() * sigma : 0;
+      const value = trend + noise;
+      return value > 0 ? value : 0;
+    });
+
+    const scaled = scaleSeriesToTotal(raw, totalDelta);
+    if (scaled === null || scaled.every((v) => v === 0) && totalDelta > 0) {
+      if (backfillStochasticFallback === 'pattern') {
+        // reuse pattern branch by setting strategy temporarily
+        const pattern = buildPatternSeries(baseline, gapDates.length);
+        const scaledPattern = scaleSeriesToTotal(pattern, totalDelta);
+        if (scaledPattern === null) {
+          if (backfillPatternFallback === 'even') {
+            const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
+            const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
+            const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+            const txEven = db.transaction((dates) => {
+              dates.forEach((d, i) => {
+                const value = base + (i < remainder ? 1 : 0);
+                upsertEven.run(d, value);
+              });
+            });
+            txEven(gapDates);
+            console.log(`Backfilled ${gapDates.length} day(s) evenly (pattern invalid) with total delta=${totalDelta}`);
+            return;
+          }
+          throw new Error('Pattern fallback invalid and BACKFILL_PATTERN_FALLBACK!=even.');
+        }
+        const upsertPattern = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const txPattern = db.transaction((dates, values) => {
+          dates.forEach((d, i) => {
+            upsertPattern.run(d, values[i]);
+          });
+        });
+        txPattern(gapDates, scaledPattern);
+        console.log(
+          `Backfilled ${gapDates.length} day(s) with pattern (stochastic fallback) from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} (lookback=${backfillLookbackDays}, total delta=${totalDelta})`
+        );
+        return;
+      }
+      if (backfillStochasticFallback === 'even') {
+        const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
+        const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
+        const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const txEven = db.transaction((dates) => {
+          dates.forEach((d, i) => {
+            const value = base + (i < remainder ? 1 : 0);
+            upsertEven.run(d, value);
+          });
+        });
+        txEven(gapDates);
+        console.log(`Backfilled ${gapDates.length} day(s) evenly (stochastic unavailable) with total delta=${totalDelta}`);
+        return;
+      }
+      throw new Error('Stochastic backfill unavailable and fallback is not even/pattern.');
+    }
+
+    const upsertStochastic = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    const txStochastic = db.transaction((dates, values) => {
+      dates.forEach((d, i) => {
+        upsertStochastic.run(d, values[i]);
+      });
+    });
+    txStochastic(gapDates, scaled);
+    console.log(
+      `Backfilled ${gapDates.length} day(s) with stochastic series from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} (lookback=${backfillLookbackDays}, slope=${slope.toFixed(4)}, sigma=${sigma.toFixed(4)}, total delta=${totalDelta})`
     );
     return;
   }

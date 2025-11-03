@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceArea } from 'recharts';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceArea, ReferenceLine, Label } from 'recharts';
 import clsx from 'clsx';
 
 import {
@@ -92,17 +92,42 @@ export function DailyDownloadsChart() {
   // Use all data points without filtering
   const chartData = formattedData;
 
+  const backfillAnnotations = React.useMemo(() => {
+    if (chartData.length === 0 || events.length === 0) return [] as { key: string; x: string; text: string }[];
+    const dates = chartData.map((d) => d.date);
+    const findFirstIndexOnOrAfter = (target: string) => {
+      const idx = dates.findIndex((d) => d >= target);
+      return idx === -1 ? dates.length - 1 : idx;
+    };
+    const findLastIndexOnOrBefore = (target: string) => {
+      for (let i = dates.length - 1; i >= 0; i -= 1) {
+        if (dates[i] <= target) return i;
+      }
+      return 0;
+    };
+    return events.map((e, i) => {
+      let startIndex = dates.indexOf(e.startDate);
+      if (startIndex === -1) startIndex = findFirstIndexOnOrAfter(e.startDate);
+      let endIndex = dates.indexOf(e.endDate);
+      if (endIndex === -1) endIndex = findLastIndexOnOrBefore(e.endDate);
+      if (startIndex > endIndex) {
+        const temp = startIndex;
+        startIndex = endIndex;
+        endIndex = temp;
+      }
+      const midIndex = Math.floor((startIndex + endIndex) / 2);
+      const x = dates[midIndex];
+      const text = `Backfilled (${e.strategy})`;
+      return { key: `${e.startDate}-${e.endDate}-${i}`, x, text };
+    });
+  }, [chartData, events]);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Daily New Downloads</CardTitle>
         <CardDescription>
           Net new downloads per day for all portable ComfyUI releases.
-          {events.length > 0 && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              Backfilled data present: {events.map((e) => `${e.startDate}→${e.endDate} (${e.strategy})`).join(', ')}
-            </div>
-          )}
           {data.length > 1 && (
             <div className="mt-2">
               <p className="text-sm">
@@ -165,7 +190,7 @@ export function DailyDownloadsChart() {
               margin={{
                 left: 12,
                 right: 12,
-                top: 10,
+                top: 16,
                 bottom: 10,
               }}
             >
@@ -198,6 +223,11 @@ export function DailyDownloadsChart() {
                 stroke="var(--color-downloads)"
                 stackId="a"
               />
+              {backfillAnnotations.map((a) => (
+                <ReferenceLine key={a.key} x={a.x} stroke="transparent">
+                  <Label value={a.text} position="top" fontSize={10} />
+                </ReferenceLine>
+              ))}
             </AreaChart>
           </ChartContainer>
         )}

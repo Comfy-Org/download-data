@@ -96,23 +96,31 @@ CREATE TABLE IF NOT EXISTS asset_daily_stats (
 
 ### daily_summary
 
-The `daily_summary` table summarizes daily total and delta of downloads.
+The `daily_summary` table stores the daily delta (net new downloads) across all assets.
 
 Column | Type | Description
 --- | --- | ---
 date | TEXT | Date in `YYYY-MM-DD` format.
-downloads_total | INTEGER | Total downloads for all assets on that date.
-downloads_delta | INTEGER | Difference in downloads compared to the previous day.
-fetch_timestamp | TEXT | ISO 8601 timestamp when the summary was fetched (default to current time).
+downloads_delta | INTEGER | Net new downloads attributed to this date.
+fetch_timestamp | TEXT | ISO 8601 timestamp when the summary was recorded (default to current time).
 
 ```sql
 CREATE TABLE IF NOT EXISTS daily_summary (
   date TEXT PRIMARY KEY,
-  downloads_total INTEGER NOT NULL,
   downloads_delta INTEGER NOT NULL,
   fetch_timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 ```
+
+### Backfill Behavior
+
+If the fetch process misses days, the script evenly distributes the total change
+between the last available snapshot and today across all missing days. This avoids
+one-day spikes when resuming after a gap.
+
+Environment variables:
+- `BACKFILL_STRATEGY`: `even` (default) to distribute across the gap, `none` to disable backfill and use only the previous day.
+- `BACKFILL_MIN_GAP_DAYS`: minimum number of missing days to trigger backfill (default: `2`).
 
 ## GitHub Actions Workflow
 

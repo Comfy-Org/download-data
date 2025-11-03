@@ -9,9 +9,42 @@ const githubApiUrl = `https://api.github.com/repos/${githubRepo}/releases`;
 
 // Inject PAT from secrets
 const githubToken = process.env.PAT;
+const backfillStrategy = (process.env.BACKFILL_STRATEGY || 'even').toLowerCase();
+const backfillMinimumGapDays = Number.parseInt(process.env.BACKFILL_MIN_GAP_DAYS || '2', 10);
 
+/**
+ * Formats a Date to YYYY-MM-DD.
+ */
 function formatDate(date) {
   return date.toISOString().split('T')[0];
+}
+
+/**
+ * Parses YYYY-MM-DD into a Date in UTC.
+ */
+function parseDate(value) {
+  const [year, month, day] = value.split('-').map((v) => Number.parseInt(v, 10));
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+/**
+ * Returns a new date string that is `days` after the given YYYY-MM-DD date.
+ */
+function addDays(dateString, days) {
+  const date = parseDate(dateString);
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatDate(date);
+}
+
+/**
+ * Calculates whole-day difference from start (exclusive) to end (inclusive).
+ */
+function daysBetweenExclusiveInclusive(startDateString, endDateString) {
+  const start = parseDate(startDateString);
+  const end = parseDate(endDateString);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const diff = Math.round((end.getTime() - start.getTime()) / msPerDay);
+  return diff;
 }
 
 // Ensure data directory exists
@@ -112,11 +145,73 @@ function storeDailySummary() {
   console.log('Storing daily summary...');
   const today = new Date();
   const todayDate = formatDate(today);
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  const yesterdayDate = formatDate(yesterday);
-  // Calculate delta per asset to avoid negative values when assets are missing
-  const deltaRow = db.prepare(`
+
+  if (backfillStrategy === 'none') {
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(today.getUTCDate() - 1);
+    const yesterdayDate = formatDate(yesterday);
+    const deltaRow = db.prepare(`
+      SELECT
+        COALESCE(SUM(
+          CASE
+            WHEN old.download_count IS NULL THEN new.download_count
+            ELSE new.download_count - old.download_count
+          END
+        ), 0) AS delta
+      FROM asset_daily_stats AS new
+      LEFT JOIN asset_daily_stats AS old
+        ON new.asset_id = old.asset_id AND old.date = ?
+      WHERE new.date = ?
+    `).get(yesterdayDate, todayDate);
+    const delta = deltaRow.delta;
+    const upsert = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    upsert.run(todayDate, delta);
+    console.log(`Daily summary stored (no backfill) for ${todayDate}: delta=${delta}`);
+    return;
+  }
+
+  const lastSnapshotRow = db.prepare(
+    `SELECT MAX(date) AS last_date
+     FROM asset_daily_stats
+     WHERE date < ?`
+  ).get(todayDate);
+  const lastSnapshotDate = lastSnapshotRow && lastSnapshotRow.last_date ? lastSnapshotRow.last_date : null;
+
+  if (!lastSnapshotDate) {
+    const upsertFirst = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    upsertFirst.run(todayDate, 0);
+    console.log(`First run detected. Initialized ${todayDate} with delta=0.`);
+    return;
+  }
+
+  const gapDays = daysBetweenExclusiveInclusive(lastSnapshotDate, todayDate);
+  if (gapDays <= 0) {
+    throw new Error('Invalid gap calculation for daily summary.');
+  }
+
+  if (gapDays < backfillMinimumGapDays) {
+    const yesterdayDate = addDays(todayDate, -1);
+    const deltaRow = db.prepare(`
+      SELECT
+        COALESCE(SUM(
+          CASE
+            WHEN old.download_count IS NULL THEN new.download_count
+            ELSE new.download_count - old.download_count
+          END
+        ), 0) AS delta
+      FROM asset_daily_stats AS new
+      LEFT JOIN asset_daily_stats AS old
+        ON new.asset_id = old.asset_id AND old.date = ?
+      WHERE new.date = ?
+    `).get(yesterdayDate, todayDate);
+    const delta = deltaRow.delta;
+    const upsert = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    upsert.run(todayDate, delta);
+    console.log(`Daily summary stored (small gap) for ${todayDate}: delta=${delta}`);
+    return;
+  }
+
+  const totalDeltaRow = db.prepare(`
     SELECT
       COALESCE(SUM(
         CASE
@@ -128,13 +223,25 @@ function storeDailySummary() {
     LEFT JOIN asset_daily_stats AS old
       ON new.asset_id = old.asset_id AND old.date = ?
     WHERE new.date = ?
-  `).get(yesterdayDate, todayDate);
-  const delta = deltaRow.delta;
-  const insertSummary = db.prepare(
-    `INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`
+  `).get(lastSnapshotDate, todayDate);
+  const totalDelta = Number(totalDeltaRow.delta || 0);
+
+  const gapDates = Array.from({ length: gapDays }, (_, i) => addDays(lastSnapshotDate, i + 1));
+
+  const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
+  const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
+
+  const upsert = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+  const tx = db.transaction((dates) => {
+    dates.forEach((d, i) => {
+      const value = base + (i < remainder ? 1 : 0);
+      upsert.run(d, value);
+    });
+  });
+  tx(gapDates);
+  console.log(
+    `Backfilled ${gapDates.length} day(s) from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} evenly with total delta=${totalDelta}`
   );
-  insertSummary.run(todayDate, delta);
-  console.log(`Daily summary stored for ${todayDate}: delta=${delta}`);
 }
 
 // --- Main Execution ---

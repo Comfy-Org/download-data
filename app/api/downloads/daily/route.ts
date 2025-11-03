@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const rawTimeframe = searchParams.get('timeframe');
   const timeframe: Timeframe = rawTimeframe && ALLOWED_TIMEFRAMES.includes(rawTimeframe as Timeframe)
     ? (rawTimeframe as Timeframe)
-    : 'all';
+    : '1month';
   // Determine how many recent data points to return for each timeframe
   const POINT_COUNTS: Record<Timeframe, number | null> = {
     '1week': 7,

@@ -38,7 +38,7 @@ export function DailyDownloadsChart() {
   const [data, setData] = React.useState<DailyDownload[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [timeframe, setTimeframe] = React.useState<Timeframe>('all');
+  const [timeframe, setTimeframe] = React.useState<Timeframe>('1month');
 
   React.useEffect(() => {
     const controller = new AbortController();

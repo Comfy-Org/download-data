@@ -110,6 +110,15 @@ export function DailyDownloadsChart() {
     return `${monthAbbreviations[monthIndex]} ${day}`;
   }
 
+  /**
+   * Formats Y-axis ticks as localized numbers, hiding zero to reduce clutter.
+   */
+  function formatYAxisTickHideZero(value: number): string {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    return numeric === 0 ? '' : numeric.toLocaleString();
+  }
+
   const backfillAnnotations = React.useMemo(() => {
     if (chartData.length === 0 || events.length === 0) return [] as { key: string; x: string; text: string }[];
     const dates = chartData.map((d) => d.date);
@@ -226,7 +235,7 @@ export function DailyDownloadsChart() {
                  tickLine={false}
                  axisLine={false}
                  tickMargin={8}
-                 tickFormatter={(value) => value.toLocaleString()} // Format Y-axis numbers
+                 tickFormatter={formatYAxisTickHideZero}
               />
               {events.map((e, idx) => (
                 <ReferenceArea key={`${e.startDate}-${e.endDate}-${idx}`} x1={e.startDate} x2={e.endDate} fill="#8884d8" fillOpacity={0.08} />

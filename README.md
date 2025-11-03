@@ -119,8 +119,13 @@ between the last available snapshot and today across all missing days. This avoi
 one-day spikes when resuming after a gap.
 
 Environment variables:
-- `BACKFILL_STRATEGY`: `even` (default) to distribute across the gap, `none` to disable backfill and use only the previous day.
+- `BACKFILL_STRATEGY`: `even` (default), `pattern`, or `none`.
+  - `even`: distribute evenly across the gap.
+  - `pattern`: replay recent variability and scale to the gap’s total.
+  - `none`: disable backfill; use only the previous day’s diff.
 - `BACKFILL_MIN_GAP_DAYS`: minimum number of missing days to trigger backfill (default: `2`).
+- `BACKFILL_LOOKBACK_DAYS`: number of days to learn the pattern shape from for `pattern` (default: `30`).
+- `BACKFILL_PATTERN_FALLBACK`: behavior when pattern is unavailable or invalid; `even` (default) or `fail`.
 
 ## GitHub Actions Workflow
 

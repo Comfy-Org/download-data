@@ -11,6 +11,8 @@ const githubApiUrl = `https://api.github.com/repos/${githubRepo}/releases`;
 const githubToken = process.env.PAT;
 const backfillStrategy = (process.env.BACKFILL_STRATEGY || 'even').toLowerCase();
 const backfillMinimumGapDays = Number.parseInt(process.env.BACKFILL_MIN_GAP_DAYS || '2', 10);
+const backfillLookbackDays = Number.parseInt(process.env.BACKFILL_LOOKBACK_DAYS || '30', 10);
+const backfillPatternFallback = (process.env.BACKFILL_PATTERN_FALLBACK || 'even').toLowerCase();
 
 /**
  * Formats a Date to YYYY-MM-DD.
@@ -45,6 +47,46 @@ function daysBetweenExclusiveInclusive(startDateString, endDateString) {
   const msPerDay = 24 * 60 * 60 * 1000;
   const diff = Math.round((end.getTime() - start.getTime()) / msPerDay);
   return diff;
+}
+
+/**
+ * Scales a non-negative shape array so that the result consists of integers
+ * that sum exactly to targetSum, using largest remainder rounding.
+ */
+function scaleSeriesToTotal(shape, targetSum) {
+  const n = shape.length;
+  if (n === 0) return [];
+  const total = shape.reduce((a, b) => a + Math.max(0, b), 0);
+  if (targetSum === 0) return new Array(n).fill(0);
+  if (total <= 0) return null;
+  const raw = shape.map((v) => (Math.max(0, v) / total) * targetSum);
+  const floors = raw.map((v) => Math.floor(v));
+  let remainder = targetSum - floors.reduce((a, b) => a + b, 0);
+  const fractional = raw.map((v, i) => [i, v - Math.floor(v)]);
+  fractional.sort((a, b) => b[1] - a[1]);
+  const result = floors.slice();
+  for (let k = 0; k < fractional.length && remainder > 0; k++) {
+    const idx = fractional[k][0];
+    result[idx] += 1;
+    remainder -= 1;
+  }
+  return result;
+}
+
+/**
+ * Builds a repeated pattern series of length targetLength from the provided
+ * baseline array, taking the most recent values and cycling if needed.
+ */
+function buildPatternSeries(baseline, targetLength) {
+  const source = baseline.slice(-Math.min(baseline.length, targetLength));
+  if (source.length === 0) return [];
+  const result = [];
+  let i = 0;
+  while (result.length < targetLength) {
+    result.push(source[i % source.length]);
+    i += 1;
+  }
+  return result;
 }
 
 // Ensure data directory exists
@@ -225,12 +267,71 @@ function storeDailySummary() {
     WHERE new.date = ?
   `).get(lastSnapshotDate, todayDate);
   const totalDelta = Number(totalDeltaRow.delta || 0);
-
   const gapDates = Array.from({ length: gapDays }, (_, i) => addDays(lastSnapshotDate, i + 1));
+
+  if (backfillStrategy === 'pattern') {
+    if (totalDelta < 0) {
+      throw new Error('Negative total delta for pattern backfill.');
+    }
+    const baselineRows = db.prepare(
+      `SELECT date, downloads_delta
+       FROM daily_summary
+       WHERE date < ?
+       ORDER BY date DESC
+       LIMIT ?`
+    ).all(lastSnapshotDate, backfillLookbackDays);
+    const baseline = baselineRows.map((r) => Number(r.downloads_delta || 0)).reverse();
+    const pattern = buildPatternSeries(baseline, gapDates.length);
+    if (pattern.length === 0 || pattern.every((v) => v <= 0)) {
+      if (backfillPatternFallback === 'even') {
+        const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
+        const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
+        const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const txEven = db.transaction((dates) => {
+          dates.forEach((d, i) => {
+            const value = base + (i < remainder ? 1 : 0);
+            upsertEven.run(d, value);
+          });
+        });
+        txEven(gapDates);
+        console.log(`Backfilled ${gapDates.length} day(s) evenly (pattern unavailable) with total delta=${totalDelta}`);
+        return;
+      }
+      throw new Error('Pattern backfill unavailable and fallback is not even.');
+    }
+    const scaled = scaleSeriesToTotal(pattern, totalDelta);
+    if (scaled === null) {
+      if (backfillPatternFallback === 'even') {
+        const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
+        const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
+        const upsertEven = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+        const txEven = db.transaction((dates) => {
+          dates.forEach((d, i) => {
+            const value = base + (i < remainder ? 1 : 0);
+            upsertEven.run(d, value);
+          });
+        });
+        txEven(gapDates);
+        console.log(`Backfilled ${gapDates.length} day(s) evenly (pattern invalid) with total delta=${totalDelta}`);
+        return;
+      }
+      throw new Error('Invalid pattern for backfill and fallback is not even.');
+    }
+    const upsertPattern = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
+    const txPattern = db.transaction((dates, values) => {
+      dates.forEach((d, i) => {
+        upsertPattern.run(d, values[i]);
+      });
+    });
+    txPattern(gapDates, scaled);
+    console.log(
+      `Backfilled ${gapDates.length} day(s) with pattern from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} (lookback=${backfillLookbackDays}, total delta=${totalDelta})`
+    );
+    return;
+  }
 
   const base = gapDates.length > 0 ? Math.floor(totalDelta / gapDates.length) : 0;
   const remainder = gapDates.length > 0 ? totalDelta % gapDates.length : 0;
-
   const upsert = db.prepare(`INSERT OR REPLACE INTO daily_summary (date, downloads_delta) VALUES (?, ?);`);
   const tx = db.transaction((dates) => {
     dates.forEach((d, i) => {
@@ -240,7 +341,7 @@ function storeDailySummary() {
   });
   tx(gapDates);
   console.log(
-    `Backfilled ${gapDates.length} day(s) from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} evenly with total delta=${totalDelta}`
+    `Backfilled ${gapDates.length} day(s) evenly from ${gapDates[0]} to ${gapDates[gapDates.length - 1]} with total delta=${totalDelta}`
   );
 }
 

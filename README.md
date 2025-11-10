@@ -32,8 +32,8 @@ This project fetches release and asset download data from the ComfyUI GitHub rep
 ### Installation
 
 ```bash
-git clone https://github.com/comfyanonymous/comfy-download-data.git
-cd comfy-download-data
+git clone https://github.com/Comfy-Org/download-data.git
+cd download-data
 pnpm install
 ```
 

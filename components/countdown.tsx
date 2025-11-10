@@ -60,7 +60,7 @@ export function NextUpdateCountdown() {
         Next data update in {hours}h {mm}m {ss}s&nbsp;(10:49 UTC)
       </span>
       <a
-        href="https://github.com/benceruleanlu/comfyui-download-data"
+        href="https://github.com/Comfy-Org/download-data"
         target="_blank"
         rel="noreferrer"
         aria-label="Open GitHub repository"

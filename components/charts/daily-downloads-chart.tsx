@@ -92,6 +92,9 @@ export function DailyDownloadsChart() {
   // Use all data points without filtering
   const chartData = formattedData;
 
+  // Precompute date category domain for the X axis
+  const dates = React.useMemo(() => chartData.map((d) => d.date), [chartData]);
+
   /**
    * Formats an ISO date string (YYYY-MM-DD) into a compact form.
    * Example: 2025-11-03 -> Nov 3
@@ -120,8 +123,10 @@ export function DailyDownloadsChart() {
   }
 
   const backfillAnnotations = React.useMemo(() => {
-    if (chartData.length === 0 || events.length === 0) return [] as { key: string; x: string; text: string }[];
-    const dates = chartData.map((d) => d.date);
+    // Compute label anchor positions for backfill spans. For degenerate spans
+    // (overlap collapses to a single tick) we hide the label to avoid it sitting
+    // on the Y-axis. For narrow spans on edges, nudge the label one tick inward.
+    if (dates.length === 0 || events.length === 0) return [] as { key: string; x: string; text: string }[];
     const findFirstIndexOnOrAfter = (target: string) => {
       const idx = dates.findIndex((d) => d >= target);
       return idx === -1 ? dates.length - 1 : idx;
@@ -132,22 +137,67 @@ export function DailyDownloadsChart() {
       }
       return 0;
     };
+    return events
+      .map((e, i) => {
+        let startIndex = dates.indexOf(e.startDate);
+        if (startIndex === -1) startIndex = findFirstIndexOnOrAfter(e.startDate);
+        let endIndex = dates.indexOf(e.endDate);
+        if (endIndex === -1) endIndex = findLastIndexOnOrBefore(e.endDate);
+
+        if (startIndex > endIndex) {
+          const temp = startIndex;
+          startIndex = endIndex;
+          endIndex = temp;
+        }
+
+        const width = endIndex - startIndex;
+        // Hide label for zero-width overlaps to avoid Y-axis placement
+        if (width < 1) return null;
+
+        let midIndex = Math.floor((startIndex + endIndex) / 2);
+        // Nudge off chart edges when possible
+        if (midIndex === 0 && dates.length > 1) midIndex = 1;
+        if (midIndex === dates.length - 1 && dates.length > 1) midIndex = Math.max(0, dates.length - 2);
+
+        const x = dates[midIndex];
+        const text = `Backfilled (${e.strategy})`;
+        return { key: `${e.startDate}-${e.endDate}-${i}`, x, text };
+      })
+      .filter((v): v is { key: string; x: string; text: string } => v !== null);
+  }, [dates, events]);
+
+  // Clamp backfill shading to visible domain and snap to nearest category keys
+  const clampedBackfillAreas = React.useMemo(() => {
+    if (dates.length === 0 || events.length === 0) return [] as { key: string; x1: string; x2: string }[];
+    const findFirstIndexOnOrAfter = (target: string) => {
+      const idx = dates.findIndex((d) => d >= target);
+      return idx; // -1 means target is after visibleEnd
+    };
+    const findLastIndexOnOrBefore = (target: string) => {
+      for (let i = dates.length - 1; i >= 0; i -= 1) {
+        if (dates[i] <= target) return i; // -1 means target is before visibleStart
+      }
+      return -1;
+    };
     return events.map((e, i) => {
       let startIndex = dates.indexOf(e.startDate);
       if (startIndex === -1) startIndex = findFirstIndexOnOrAfter(e.startDate);
       let endIndex = dates.indexOf(e.endDate);
       if (endIndex === -1) endIndex = findLastIndexOnOrBefore(e.endDate);
+
+      // Skip if event does not overlap visible window
+      if (startIndex === -1 || endIndex === -1) return null;
+
       if (startIndex > endIndex) {
         const temp = startIndex;
         startIndex = endIndex;
         endIndex = temp;
       }
-      const midIndex = Math.floor((startIndex + endIndex) / 2);
-      const x = dates[midIndex];
-      const text = `Backfilled (${e.strategy})`;
-      return { key: `${e.startDate}-${e.endDate}-${i}`, x, text };
-    });
-  }, [chartData, events]);
+      const x1 = dates[startIndex];
+      const x2 = dates[endIndex];
+      return { key: `${e.startDate}-${e.endDate}-${i}`, x1, x2 };
+    }).filter((v): v is { key: string; x1: string; x2: string } => v !== null);
+  }, [dates, events]);
 
   return (
     <Card>
@@ -237,8 +287,8 @@ export function DailyDownloadsChart() {
                  tickMargin={8}
                  tickFormatter={formatYAxisTickHideZero}
               />
-              {events.map((e, idx) => (
-                <ReferenceArea key={`${e.startDate}-${e.endDate}-${idx}`} x1={e.startDate} x2={e.endDate} fill="#8884d8" fillOpacity={0.08} />
+              {clampedBackfillAreas.map((span) => (
+                <ReferenceArea key={span.key} x1={span.x1} x2={span.x2} fill="#8884d8" fillOpacity={0.08} />
               ))}
               <ChartTooltip
                 cursor={false}
